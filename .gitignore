@@ -1,17 +1,21 @@
-node_modules
-.env
+# Node.js dependencies
+/node_modules
 
-# Hardhat files
-/cache
+# Hardhat artifacts
 /artifacts
+/cache
 
-# TypeChain files
-/typechain
-/typechain-types
+# Environment and secret files
+.env
+.secret.json
 
-# solidity-coverage files
-/coverage
-/coverage.json
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# Hardhat Ignition default folder for deployments against a local node
-ignition/deployments/chain-31337
+# Ignore build output
+/build
+
+# Miscellaneous
+.DS_Store
