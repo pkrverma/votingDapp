@@ -17,6 +17,7 @@
     "hardhat": "^2.24.1"
   },
   "dependencies": {
+    "ether": "^0.0.9",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   }
