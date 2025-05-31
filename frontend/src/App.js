@@ -1,16 +1,16 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { ethers } from 'ethers'; // Make sure to use ethers v5 if your code is based on it, or update to v6 for BrowserProvider
-import ContractAbiJson from './votingContractAbi.json'; // Adjust path as needed
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { ethers } from 'ethers';
+import ContractAbiJson from './votingContractAbi.json';
 
-// Import new components
-import AdminPanel from './components/AdminPanel';
+// Import components
+import AdminDashboard from './components/AdminDashboard';
 import VoterPanel from './components/VoterPanel';
 import CandidateList from './components/CandidateList';
 import MessageDisplay from './components/MessageDisplay';
 import LoadingOverlay from './components/LoadingOverlay';
 
 // --- Contract Configuration ---
-const CONTRACT_ADDRESS = "0x45381ec7A5A42eD6fA8F9b650Ab9D4A43dc3280e";
+const CONTRACT_ADDRESS = "0x45381ec7A5A42eD6fA8F9b650Ab9D4A43dc3280e"; // REPLACE WITH YOUR DEPLOYED CONTRACT ADDRESS
 const CONTRACT_ABI = ContractAbiJson.abi;
 // --- End Contract Configuration ---
 
@@ -29,20 +29,33 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState({ text: '', type: '' });
 
+  // Use a ref to store the timeout ID to clear it if a new message comes in
+  const messageTimeoutRef = useRef(null);
+
   // Helper function to display messages
-  const showMessage = (text, type, duration = 5000) => {
+  const showMessage = useCallback((text, type, duration = 5000) => {
+    // Clear any existing timeout
+    if (messageTimeoutRef.current) {
+      clearTimeout(messageTimeoutRef.current);
+    }
+
     setMessage({ text, type });
-    setTimeout(() => setMessage({ text: '', type: '' }), duration);
-  };
+
+    messageTimeoutRef.current = setTimeout(() => {
+      setMessage({ text: '', type: '' });
+      messageTimeoutRef.current = null; // Clear the ref once timeout completes
+    }, duration);
+  }, []); // showMessage itself doesn't depend on any state that changes frequently
 
   // Connect to MetaMask
   const connectWallet = useCallback(async () => {
     if (typeof window.ethereum !== 'undefined') {
       try {
         setIsLoading(true);
-        // Using ethers.BrowserProvider for ethers v6, otherwise use Web3Provider for v5
-        const web3Provider = new ethers.BrowserProvider(window.ethereum); // For ethers v6
-        // const web3Provider = new ethers.providers.Web3Provider(window.ethereum); // For ethers v5
+        // Use ethers.BrowserProvider for ethers v6
+        const web3Provider = new ethers.BrowserProvider(window.ethereum);
+        // OR use ethers.providers.Web3Provider for ethers v5:
+        // const web3Provider = new ethers.providers.Web3Provider(window.ethereum);
 
         const accounts = await web3Provider.send("eth_requestAccounts", []);
         const currentAccount = accounts[0];
@@ -66,17 +79,22 @@ function App() {
         console.error("Error connecting wallet:", error);
         showMessage(`Error connecting wallet: ${error.message || 'Unknown error'}`, 'error');
         setAccount(null);
+        setContract(null); // Clear contract if connection fails
       } finally {
         setIsLoading(false);
       }
     } else {
       showMessage('MetaMask is not installed. Please install it to use this DApp.', 'error');
     }
-  }, []);
+  }, [showMessage]);
 
   // Fetch data from the contract
   const fetchData = useCallback(async () => {
-    if (!contract || !account) return;
+    if (!contract || !account) {
+      // If contract or account isn't set, don't try to fetch data.
+      // This prevents errors on initial load before wallet is connected.
+      return;
+    }
     setIsLoading(true);
     try {
       const name = await contract.electionName();
@@ -86,7 +104,7 @@ function App() {
       setIsAdmin(adminAddress.toLowerCase() === account.toLowerCase());
 
       const count = await contract.candidatesCount();
-      const numCandidates = Number(count); // For ethers v6, BigInts are returned
+      const numCandidates = Number(count);
 
       const fetchedCandidates = [];
       for (let i = 1; i <= numCandidates; i++) {
@@ -112,36 +130,44 @@ function App() {
     } catch (error) {
       console.error("Error fetching data:", error);
       showMessage(`Error fetching data: ${error.message || 'Contract not found or network error.'}`, 'error');
-      if (CONTRACT_ADDRESS === "0x45381ec7A5A42eD6fA8F9b650Ab9D4A43dc3280e") {
+      if (CONTRACT_ADDRESS === "0x45381ec7A5A42eD6fA8F9b650Ab9D4A43dc3280e") { // Check for default address
         showMessage("Please update the CONTRACT_ADDRESS in App.js with your deployed contract's address.", "error", 10000);
       }
     } finally {
       setIsLoading(false);
     }
-  }, [contract, account]);
+  }, [contract, account, showMessage]);
 
   // Effect to fetch data when contract or account changes
   useEffect(() => {
     if (contract && account) {
       fetchData();
     }
-  }, [contract, account, fetchData]);
+  }, [contract, account, fetchData]); // Dependencies are stable (contract, account, fetchData)
 
   // Effect to handle account and chain changes in MetaMask
   useEffect(() => {
     if (window.ethereum) {
       const handleAccountsChanged = async (accounts) => {
         if (accounts.length > 0) {
-          setAccount(accounts[0]);
-          if (provider) {
-            const newSigner = await provider.getSigner(accounts[0]); // Ensure signer is updated correctly
-            setSigner(newSigner);
-            if (CONTRACT_ABI && CONTRACT_ABI.length > 0) {
+          const newAccount = accounts[0];
+          setAccount(newAccount);
+          // When account changes, re-initialize provider/signer/contract for the new account
+          try {
+              const newProvider = new ethers.BrowserProvider(window.ethereum); // For ethers v6
+              // const newProvider = new ethers.providers.Web3Provider(window.ethereum); // For ethers v5
+              setProvider(newProvider);
+              const newSigner = await newProvider.getSigner(newAccount);
+              setSigner(newSigner);
               const newContract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, newSigner);
               setContract(newContract);
-            } else {
-              showMessage('Contract ABI is not loaded on account change. Check ABI import.', 'error', 10000);
-            }
+              showMessage(`Switched to account: ${newAccount}`, 'success');
+          } catch (error) {
+              console.error("Error re-initializing wallet on account change:", error);
+              showMessage(`Error re-connecting wallet: ${error.message}`, 'error');
+              setAccount(null);
+              setContract(null);
+              setSigner(null);
           }
         } else {
           setAccount(null);
@@ -153,7 +179,8 @@ function App() {
       };
 
       const handleChainChanged = (_chainId) => {
-        window.location.reload(); // Recommended to reload on chain change
+        showMessage('Network changed. Please reload the page.', 'error', 10000);
+        setTimeout(() => window.location.reload(), 1000); // Reload after a short delay
       };
 
       window.ethereum.on('accountsChanged', handleAccountsChanged);
@@ -164,18 +191,22 @@ function App() {
         window.ethereum.removeListener('chainChanged', handleChainChanged);
       };
     }
-  }, [provider]); // Depend on provider to ensure it's available for signer updates
+  }, [showMessage]); // Only showMessage is a stable dependency
 
-
-  // --- Voter Functions (moved here as they directly affect App state and data fetch) ---
+  // --- Voter Functions (managed here as they directly affect App state and data fetch) ---
   const handleVote = async (candidateId) => {
-    if (!contract) return;
+    if (!contract || !voterInfo.authorized || voterInfo.voted) {
+      // Prevent voting if not authorized or already voted, or contract not ready
+      if (!voterInfo.authorized) showMessage('You are not authorized to vote.', 'error');
+      else if (voterInfo.voted) showMessage('You have already voted.', 'error');
+      return;
+    }
     setIsLoading(true); // Set loading for the transaction
     try {
       const tx = await contract.vote(candidateId);
       await tx.wait();
       showMessage(`Successfully voted for candidate ID ${candidateId}!`, 'success');
-      fetchData(); // Refresh data after vote
+      await fetchData(); // Refresh all data after vote
     } catch (error) {
       console.error("Error voting:", error);
       showMessage(`Error voting: ${error.data?.message || error.message || 'Transaction failed'}`, 'error');
@@ -213,43 +244,49 @@ function App() {
           {electionName && <p className="mt-2 text-xl text-gray-300">Election: <span className="font-semibold">{electionName}</span></p>}
         </header>
 
-        {account && contract && (
+        {/* Main Content - Conditional Rendering based on isAdmin */}
+        {account && contract ? (
           <main className="space-y-8">
-            {isAdmin && (
-              <AdminPanel
+            {isAdmin ? (
+              <AdminDashboard
                 contract={contract}
-                isLoading={isLoading}
+                isLoading={isLoading} // Pass isLoading to AdminDashboard
                 showMessage={showMessage}
-                fetchData={fetchData} // Pass fetchData to refresh data after admin actions
+                fetchData={fetchData}
+                account={account}
               />
+            ) : (
+              <>
+                <VoterPanel voterInfo={voterInfo} />
+                <CandidateList
+                  candidates={candidates}
+                  totalVotes={totalVotes}
+                  voterInfo={voterInfo}
+                  isLoading={isLoading} // Pass isLoading to CandidateList
+                  handleVote={handleVote}
+                />
+              </>
             )}
-
-            <VoterPanel voterInfo={voterInfo} />
-
-            <CandidateList
-              candidates={candidates}
-              totalVotes={totalVotes}
-              voterInfo={voterInfo}
-              isLoading={isLoading}
-              handleVote={handleVote} // Pass handleVote to the CandidateList
-            />
           </main>
-        )}
-
-        {!account && (
-          <div className="mt-10 text-center">
-            <p className="text-xl text-gray-400">Please connect your MetaMask wallet to use the DApp.</p>
-            <p className="text-sm text-gray-500 mt-2">Ensure you are on the correct network (e.g., CoreDAO Mainnet or Testnet).</p>
-          </div>
-        )}
-        {account && CONTRACT_ADDRESS === "0x45381ec7A5A42eD6fA8F9b650Ab9D4A43dc3280e" && ( // Check for default address
-          <div className="mt-10 text-center p-4 bg-yellow-700 rounded-lg">
-            <p className="text-xl text-white font-semibold">Configuration Needed!</p>
-            <p className="text-md text-yellow-200 mt-2">
-              Please replace <code>"0x45381ec7A5A42eD6fA8F9b650Ab9D4A43dc3280e"</code> in the <code>App.js</code> file
-              with the actual address of your deployed smart contract.
-            </p>
-          </div>
+        ) : (
+          // Display for unconnected or unconfigured state
+          <>
+            {!account && (
+              <div className="mt-10 text-center">
+                <p className="text-xl text-gray-400">Please connect your MetaMask wallet to use the DApp.</p>
+                <p className="text-sm text-gray-500 mt-2">Ensure you are on the correct network (e.g., CoreDAO Mainnet or Testnet).</p>
+              </div>
+            )}
+            {/* Display this warning only if an account is connected but the default address is still set */}
+            {account && CONTRACT_ADDRESS === "0x45381ec7A5A42eD6fA8F9b650Ab9D4A43dc3280e" && (
+              <div className="mt-10 text-center p-4 bg-yellow-700 rounded-lg">
+                <p className="text-xl text-white font-semibold">Configuration Needed!</p>
+                <p className="text-md text-yellow-200 mt-2">
+                  Please update the <code>CONTRACT_ADDRESS</code> in <code>App.js</code> with your deployed smart contract's address.
+                </p>
+              </div>
+            )}
+          </>
         )}
       </div>
       <footer className="w-full max-w-3xl mx-auto mt-12 mb-6 text-center text-gray-500 text-sm">
