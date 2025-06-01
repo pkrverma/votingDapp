@@ -8,58 +8,57 @@ import VoterPanel from './components/VoterPanel';
 import CandidateList from './components/CandidateList';
 import MessageDisplay from './components/MessageDisplay';
 import LoadingOverlay from './components/LoadingOverlay';
+import ElectionSelector from './components/ElectionSelector'; // New component
 
 // --- Contract Configuration ---
-const CONTRACT_ADDRESS = "0x45381ec7A5A42eD6fA8F9b650Ab9D4A43dc3280e"; // REPLACE WITH YOUR DEPLOYED CONTRACT ADDRESS
+const CONTRACT_ADDRESS = "0x5277697271226e191dAe06753Ba3F6F250DC1913"; // REPLACE WITH YOUR DEPLOYED CONTRACT ADDRESS
 const CONTRACT_ABI = ContractAbiJson.abi;
 // --- End Contract Configuration ---
 
 function App() {
-  // State variables
+  // --- Core DApp State ---
   const [provider, setProvider] = useState(null);
   const [signer, setSigner] = useState(null);
   const [contract, setContract] = useState(null);
-  const [account, setAccount] = useState(null);
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [electionName, setElectionName] = useState('');
+  const [account, setAccount] = useState(null); // Connected user's address
+
+  // --- Election-Specific States ---
+  const [isAdmin, setIsAdmin] = useState(false); // True if current user is the contract deployer
+  const [allElections, setAllElections] = useState([]); // List of all elections on the contract
+  const [selectedElectionId, setSelectedElectionId] = useState(0); // ID of the election currently being viewed/interacted with
+  const [currentElectionDetails, setCurrentElectionDetails] = useState(null); // Details of the selected election
+
+  // --- Data for the selected election ---
   const [candidates, setCandidates] = useState([]);
   const [totalVotes, setTotalVotes] = useState(0);
-  const [voterInfo, setVoterInfo] = useState({ authorized: false, voted: false, vote: 0 });
+  const [voterInfo, setVoterInfo] = useState({ authorized: false, voted: false, vote: 0 }); // Voter info for selected election
 
+  // --- UI States ---
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState({ text: '', type: '' });
-
-  // Use a ref to store the timeout ID to clear it if a new message comes in
   const messageTimeoutRef = useRef(null);
 
   // Helper function to display messages
   const showMessage = useCallback((text, type, duration = 5000) => {
-    // Clear any existing timeout
     if (messageTimeoutRef.current) {
       clearTimeout(messageTimeoutRef.current);
     }
-
     setMessage({ text, type });
-
     messageTimeoutRef.current = setTimeout(() => {
       setMessage({ text: '', type: '' });
-      messageTimeoutRef.current = null; // Clear the ref once timeout completes
+      messageTimeoutRef.current = null;
     }, duration);
-  }, []); // showMessage itself doesn't depend on any state that changes frequently
+  }, []);
 
   // Connect to MetaMask
   const connectWallet = useCallback(async () => {
     if (typeof window.ethereum !== 'undefined') {
       try {
         setIsLoading(true);
-        // Use ethers.BrowserProvider for ethers v6
+        // Using ethers v6 BrowserProvider
         const web3Provider = new ethers.BrowserProvider(window.ethereum);
-        // OR use ethers.providers.Web3Provider for ethers v5:
-        // const web3Provider = new ethers.providers.Web3Provider(window.ethereum);
-
         const accounts = await web3Provider.send("eth_requestAccounts", []);
         const currentAccount = accounts[0];
-
         const web3Signer = await web3Provider.getSigner(currentAccount);
 
         setProvider(web3Provider);
@@ -68,7 +67,6 @@ function App() {
 
         if (!CONTRACT_ABI || CONTRACT_ABI.length === 0) {
           showMessage('Contract ABI is not loaded. Check ABI import.', 'error', 10000);
-          setIsLoading(false);
           return;
         }
         const votingContract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, web3Signer);
@@ -79,7 +77,7 @@ function App() {
         console.error("Error connecting wallet:", error);
         showMessage(`Error connecting wallet: ${error.message || 'Unknown error'}`, 'error');
         setAccount(null);
-        setContract(null); // Clear contract if connection fails
+        setContract(null);
       } finally {
         setIsLoading(false);
       }
@@ -88,27 +86,75 @@ function App() {
     }
   }, [showMessage]);
 
-  // Fetch data from the contract
-  const fetchData = useCallback(async () => {
-    if (!contract || !account) {
-      // If contract or account isn't set, don't try to fetch data.
-      // This prevents errors on initial load before wallet is connected.
-      return;
-    }
+  // Fetch all elections from the contract
+  const fetchAllElections = useCallback(async () => {
+    if (!contract) return;
     setIsLoading(true);
     try {
-      const name = await contract.electionName();
-      setElectionName(name);
+      // Check if current account is the contract deployer (super admin)
+      const deployerAddress = await contract.deployer();
+      setIsAdmin(deployerAddress.toLowerCase() === account.toLowerCase());
 
-      const adminAddress = await contract.admin();
-      setIsAdmin(adminAddress.toLowerCase() === account.toLowerCase());
+      const electionsCount = await contract.getElectionsCount();
+      const fetchedElections = [];
+      for (let i = 1; i <= Number(electionsCount); i++) {
+        const details = await contract.getElectionDetails(i);
+        fetchedElections.push({
+          id: Number(details[0]),
+          name: details[1],
+          admin: details[2],
+          startTime: Number(details[3]),
+          endTime: Number(details[4]),
+          isActive: details[5],
+          isCompleted: details[6],
+          candidatesCount: Number(details[7]),
+          totalVotesCast: Number(details[8]),
+        });
+      }
+      setAllElections(fetchedElections);
 
-      const count = await contract.candidatesCount();
-      const numCandidates = Number(count);
+      // If no election is currently selected, default to the most recently created one
+      if (fetchedElections.length > 0 && selectedElectionId === 0) {
+          setSelectedElectionId(fetchedElections[fetchedElections.length - 1].id);
+      }
+      showMessage('All elections fetched!', 'info');
 
+    } catch (error) {
+      console.error("Error fetching all elections:", error);
+      showMessage(`Error fetching elections: ${error.message || 'Contract not found or network error.'}`, 'error');
+      if (CONTRACT_ADDRESS === "0x5277697271226e191dAe06753Ba3F6F250DC1913") {
+        showMessage("Please update the CONTRACT_ADDRESS in App.js with your deployed contract's address.", "error", 10000);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }, [contract, account, showMessage, selectedElectionId]);
+
+
+  // Fetch data specifically for the currently selected election ID
+  const fetchDataForSelectedElection = useCallback(async (electionId) => {
+    if (!contract || !account || electionId === 0) return; // Ensure an election ID is provided
+    setIsLoading(true);
+    try {
+      // Get selected election details
+      const electionDetails = await contract.getElectionDetails(electionId);
+      setCurrentElectionDetails({
+        id: Number(electionDetails[0]),
+        name: electionDetails[1],
+        admin: electionDetails[2],
+        startTime: Number(electionDetails[3]),
+        endTime: Number(electionDetails[4]),
+        isActive: electionDetails[5],
+        isCompleted: electionDetails[6],
+        candidatesCount: Number(electionDetails[7]),
+        totalVotesCast: Number(electionDetails[8]),
+      });
+
+      // Fetch candidates for the selected election
+      const numCandidates = Number(electionDetails[7]); // Use candidatesCount from electionDetails struct
       const fetchedCandidates = [];
       for (let i = 1; i <= numCandidates; i++) {
-        const candidateData = await contract.getCandidate(i);
+        const candidateData = await contract.getCandidate(electionId, i); // Pass electionId to getCandidate
         fetchedCandidates.push({
           id: Number(candidateData[0]),
           name: candidateData[1],
@@ -117,33 +163,44 @@ function App() {
       }
       setCandidates(fetchedCandidates);
 
-      const tv = await contract.totalVotes();
-      setTotalVotes(Number(tv));
+      // Total votes for the selected election
+      setTotalVotes(Number(electionDetails[8])); // Use totalVotesCast from electionDetails struct
 
-      const vInfo = await contract.voters(account);
+      // Fetch voter info for the selected election for the current account
+      const vInfo = await contract.getVoter(electionId, account); // Pass electionId to getVoter
       setVoterInfo({
         authorized: vInfo.authorized,
         voted: vInfo.voted,
-        vote: Number(vInfo.vote),
+        vote: Number(vInfo.candidateIdVotedFor), // This matches the renamed return variable in contract
       });
-      showMessage('Data fetched successfully!', 'success');
+      showMessage(`Data for election "${electionDetails[1]}" (ID: ${electionId}) fetched successfully!`, 'success');
+
     } catch (error) {
-      console.error("Error fetching data:", error);
-      showMessage(`Error fetching data: ${error.message || 'Contract not found or network error.'}`, 'error');
-      if (CONTRACT_ADDRESS === "0x45381ec7A5A42eD6fA8F9b650Ab9D4A43dc3280e") { // Check for default address
-        showMessage("Please update the CONTRACT_ADDRESS in App.js with your deployed contract's address.", "error", 10000);
-      }
+      console.error(`Error fetching data for election ID ${electionId}:`, error);
+      showMessage(`Error fetching election data: ${error.message || 'Unknown error.'}`, 'error');
     } finally {
       setIsLoading(false);
     }
   }, [contract, account, showMessage]);
 
-  // Effect to fetch data when contract or account changes
+  // Effect to fetch all elections when contract and account are established
   useEffect(() => {
     if (contract && account) {
-      fetchData();
+      fetchAllElections();
     }
-  }, [contract, account, fetchData]); // Dependencies are stable (contract, account, fetchData)
+  }, [contract, account, fetchAllElections]);
+
+  // Effect to fetch details for the selected election whenever 'selectedElectionId' changes
+  // or when 'contract'/'account' changes after an election is selected
+  useEffect(() => {
+    if (selectedElectionId > 0 && contract && account) {
+      fetchDataForSelectedElection(selectedElectionId);
+    } else if (selectedElectionId === 0 && allElections.length > 0) {
+        // If no election is selected yet but we have elections, select the most recent one
+        setSelectedElectionId(allElections[allElections.length - 1].id);
+    }
+  }, [selectedElectionId, contract, account, fetchDataForSelectedElection, allElections]);
+
 
   // Effect to handle account and chain changes in MetaMask
   useEffect(() => {
@@ -152,35 +209,39 @@ function App() {
         if (accounts.length > 0) {
           const newAccount = accounts[0];
           setAccount(newAccount);
-          // When account changes, re-initialize provider/signer/contract for the new account
           try {
-              const newProvider = new ethers.BrowserProvider(window.ethereum); // For ethers v6
-              // const newProvider = new ethers.providers.Web3Provider(window.ethereum); // For ethers v5
-              setProvider(newProvider);
-              const newSigner = await newProvider.getSigner(newAccount);
-              setSigner(newSigner);
-              const newContract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, newSigner);
-              setContract(newContract);
-              showMessage(`Switched to account: ${newAccount}`, 'success');
+            const newProvider = new ethers.BrowserProvider(window.ethereum);
+            const newSigner = await newProvider.getSigner(newAccount);
+            const newContract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, newSigner);
+            setProvider(newProvider);
+            setSigner(newSigner);
+            setContract(newContract);
+            showMessage(`Switched to account: ${newAccount}`, 'success');
           } catch (error) {
-              console.error("Error re-initializing wallet on account change:", error);
-              showMessage(`Error re-connecting wallet: ${error.message}`, 'error');
-              setAccount(null);
-              setContract(null);
-              setSigner(null);
+            console.error("Error re-initializing wallet on account change:", error);
+            showMessage(`Error re-connecting wallet: ${error.message}`, 'error');
+            setAccount(null);
+            setContract(null);
+            setSigner(null);
           }
         } else {
+          // No accounts found or user disconnected
           setAccount(null);
           setContract(null);
           setSigner(null);
           setIsAdmin(false);
+          setAllElections([]);
+          setSelectedElectionId(0);
+          setCurrentElectionDetails(null);
+          setCandidates([]);
+          setVoterInfo({ authorized: false, voted: false, vote: 0 });
           showMessage('Wallet disconnected or no account selected.', 'error');
         }
       };
 
       const handleChainChanged = (_chainId) => {
         showMessage('Network changed. Please reload the page.', 'error', 10000);
-        setTimeout(() => window.location.reload(), 1000); // Reload after a short delay
+        setTimeout(() => window.location.reload(), 1000);
       };
 
       window.ethereum.on('accountsChanged', handleAccountsChanged);
@@ -191,22 +252,29 @@ function App() {
         window.ethereum.removeListener('chainChanged', handleChainChanged);
       };
     }
-  }, [showMessage]); // Only showMessage is a stable dependency
+  }, [showMessage]);
 
-  // --- Voter Functions (managed here as they directly affect App state and data fetch) ---
+  // --- Voter Function (now specific to electionId) ---
   const handleVote = async (candidateId) => {
-    if (!contract || !voterInfo.authorized || voterInfo.voted) {
-      // Prevent voting if not authorized or already voted, or contract not ready
-      if (!voterInfo.authorized) showMessage('You are not authorized to vote.', 'error');
-      else if (voterInfo.voted) showMessage('You have already voted.', 'error');
+    // Basic checks before attempting to vote
+    if (!contract || !voterInfo.authorized || voterInfo.voted || selectedElectionId === 0) {
+      if (!voterInfo.authorized) showMessage('You are not authorized to vote in this election.', 'error');
+      else if (voterInfo.voted) showMessage('You have already voted in this election.', 'error');
+      else if (selectedElectionId === 0) showMessage('Please select an election to vote in.', 'error');
       return;
     }
-    setIsLoading(true); // Set loading for the transaction
+    // Check election status
+    if (!currentElectionDetails || !currentElectionDetails.isActive) {
+        showMessage('Voting is not currently active for this election. Please wait for it to start or select an active election.', 'error');
+        return;
+    }
+    setIsLoading(true);
     try {
-      const tx = await contract.vote(candidateId);
+      const tx = await contract.vote(selectedElectionId, candidateId); // Pass selectedElectionId
       await tx.wait();
-      showMessage(`Successfully voted for candidate ID ${candidateId}!`, 'success');
-      await fetchData(); // Refresh all data after vote
+      showMessage(`Successfully voted for candidate ID ${candidateId} in election ID ${selectedElectionId}!`, 'success');
+      // Refresh data for the current election only
+      await fetchDataForSelectedElection(selectedElectionId);
     } catch (error) {
       console.error("Error voting:", error);
       showMessage(`Error voting: ${error.data?.message || error.message || 'Transaction failed'}`, 'error');
@@ -241,8 +309,29 @@ function App() {
               </div>
             )}
           </div>
-          {electionName && <p className="mt-2 text-xl text-gray-300">Election: <span className="font-semibold">{electionName}</span></p>}
+          {/* Display current election details */}
+          {currentElectionDetails && (
+            <p className="mt-2 text-xl text-gray-300">
+              Election: <span className="font-semibold">{currentElectionDetails.name} (ID: {currentElectionDetails.id})</span>
+              <span className={`ml-3 px-2 py-1 rounded-full text-xs font-medium
+                ${currentElectionDetails.isActive ? 'bg-green-600 text-white' :
+                  currentElectionDetails.isCompleted ? 'bg-red-600 text-white' :
+                  'bg-yellow-600 text-white'}`}>
+                {currentElectionDetails.isActive ? 'Active' : currentElectionDetails.isCompleted ? 'Completed' : 'Scheduled'}
+              </span>
+            </p>
+          )}
         </header>
+
+        {/* Election Selector (always visible once elections are loaded and wallet is connected) */}
+        {account && allElections.length > 0 && (
+            <ElectionSelector
+                elections={allElections}
+                selectedElectionId={selectedElectionId}
+                onSelectElection={setSelectedElectionId} // Function to update selectedElectionId
+            />
+        )}
+
 
         {/* Main Content - Conditional Rendering based on isAdmin */}
         {account && contract ? (
@@ -250,20 +339,34 @@ function App() {
             {isAdmin ? (
               <AdminDashboard
                 contract={contract}
-                isLoading={isLoading} // Pass isLoading to AdminDashboard
+                isLoading={isLoading}
                 showMessage={showMessage}
-                fetchData={fetchData}
                 account={account}
+                allElections={allElections} // Pass all elections to admin dashboard
+                selectedElectionId={selectedElectionId}
+                currentElectionDetails={currentElectionDetails} // Pass details for current selected election
+                refreshAllElections={fetchAllElections} // To refresh the list of all elections
+                refreshSelectedElection={fetchDataForSelectedElection} // To refresh details of the selected election
+                setSelectedElectionId={setSelectedElectionId} // Allow admin to change selected election via ElectionSelector
               />
             ) : (
+              // Regular Voter/Candidate view
               <>
-                <VoterPanel voterInfo={voterInfo} />
+                <VoterPanel
+                  voterInfo={voterInfo}
+                  electionName={currentElectionDetails ? currentElectionDetails.name : 'Loading...'}
+                  electionId={selectedElectionId}
+                  electionStatus={currentElectionDetails ? currentElectionDetails.isActive ? 'Active' : currentElectionDetails.isCompleted ? 'Completed' : 'Scheduled' : 'Unknown'}
+                  startTime={currentElectionDetails ? currentElectionDetails.startTime : 0}
+                  endTime={currentElectionDetails ? currentElectionDetails.endTime : 0}
+                />
                 <CandidateList
                   candidates={candidates}
                   totalVotes={totalVotes}
                   voterInfo={voterInfo}
-                  isLoading={isLoading} // Pass isLoading to CandidateList
+                  isLoading={isLoading}
                   handleVote={handleVote}
+                  electionActive={currentElectionDetails ? currentElectionDetails.isActive : false} // Pass active status to disable voting if not active
                 />
               </>
             )}
@@ -277,8 +380,7 @@ function App() {
                 <p className="text-sm text-gray-500 mt-2">Ensure you are on the correct network (e.g., CoreDAO Mainnet or Testnet).</p>
               </div>
             )}
-            {/* Display this warning only if an account is connected but the default address is still set */}
-            {account && CONTRACT_ADDRESS === "0x45381ec7A5A42eD6fA8F9b650Ab9D4A43dc3280e" && (
+            {account && CONTRACT_ADDRESS === "0x5277697271226e191dAe06753Ba3F6F250DC1913" && (
               <div className="mt-10 text-center p-4 bg-yellow-700 rounded-lg">
                 <p className="text-xl text-white font-semibold">Configuration Needed!</p>
                 <p className="text-md text-yellow-200 mt-2">
