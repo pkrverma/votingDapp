@@ -26,10 +26,12 @@ The Blockchain Voting System aims to provide a decentralized, tamper-proof, and 
 
 ## Frontend Showcase
 
- *Going to add more*
+![Admin Dashboard](/frontend/src/media/AdminDashboard.png)
+
+![Voter Dashboard](/frontend/src/media/VoterDashboard.png)
 
 ## Contract Address
 
 > 0x45381ec7A5A42eD6fA8F9b650Ab9D4A43dc3280e
 
-![CoreDao Explorer](./src/media/image.png)
+![CoreDao Explorer](/frontend/src/media/image.png)

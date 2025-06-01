@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ethers } from 'ethers';
-import ContractAbiJson from './votingContractAbi.json';
+import ContractAbiJson from './votingContractAbi.json'; // Ensure this path is correct for your ABI
 
 // Import components
 import AdminDashboard from './components/AdminDashboard';
@@ -8,10 +8,11 @@ import VoterPanel from './components/VoterPanel';
 import CandidateList from './components/CandidateList';
 import MessageDisplay from './components/MessageDisplay';
 import LoadingOverlay from './components/LoadingOverlay';
-import ElectionSelector from './components/ElectionSelector'; // New component
+import ElectionSelector from './components/ElectionSelector';
 
 // --- Contract Configuration ---
-const CONTRACT_ADDRESS = "0x5277697271226e191dAe06753Ba3F6F250DC1913"; // REPLACE WITH YOUR DEPLOYED CONTRACT ADDRESS
+// !!! IMPORTANT: REPLACE THIS WITH YOUR DEPLOYED CONTRACT ADDRESS !!!
+const CONTRACT_ADDRESS = "0x5277697271226e191dAe06753Ba3F6F250DC1913";
 const CONTRACT_ABI = ContractAbiJson.abi;
 // --- End Contract Configuration ---
 
@@ -88,7 +89,7 @@ function App() {
 
   // Fetch all elections from the contract
   const fetchAllElections = useCallback(async () => {
-    if (!contract) return;
+    if (!contract || !account) return; // Ensure contract and account are ready
     setIsLoading(true);
     try {
       // Check if current account is the contract deployer (super admin)
@@ -114,14 +115,17 @@ function App() {
       setAllElections(fetchedElections);
 
       // If no election is currently selected, default to the most recently created one
+      // This helps in initial load or after a new election is created
       if (fetchedElections.length > 0 && selectedElectionId === 0) {
           setSelectedElectionId(fetchedElections[fetchedElections.length - 1].id);
       }
-      showMessage('All elections fetched!', 'info');
+      // Commented to reduce message spam
+      // showMessage('All elections fetched!', 'info');
 
     } catch (error) {
       console.error("Error fetching all elections:", error);
       showMessage(`Error fetching elections: ${error.message || 'Contract not found or network error.'}`, 'error');
+      // Provide a specific warning if the default address is still in use
       if (CONTRACT_ADDRESS === "0x5277697271226e191dAe06753Ba3F6F250DC1913") {
         showMessage("Please update the CONTRACT_ADDRESS in App.js with your deployed contract's address.", "error", 10000);
       }
@@ -133,7 +137,15 @@ function App() {
 
   // Fetch data specifically for the currently selected election ID
   const fetchDataForSelectedElection = useCallback(async (electionId) => {
-    if (!contract || !account || electionId === 0) return; // Ensure an election ID is provided
+    // Clear previous details if no valid electionId or prerequisites are met
+    if (!contract || !account || electionId === 0) {
+        setCurrentElectionDetails(null);
+        setCandidates([]);
+        setVoterInfo({ authorized: false, voted: false, vote: 0 });
+        setTotalVotes(0);
+        return;
+    }
+
     setIsLoading(true);
     try {
       // Get selected election details
@@ -173,7 +185,8 @@ function App() {
         voted: vInfo.voted,
         vote: Number(vInfo.candidateIdVotedFor), // This matches the renamed return variable in contract
       });
-      showMessage(`Data for election "${electionDetails[1]}" (ID: ${electionId}) fetched successfully!`, 'success');
+      // Commented to reduce message spam
+      // showMessage(`Data for election "${electionDetails[1]}" (ID: ${electionId}) fetched successfully!`, 'success');
 
     } catch (error) {
       console.error(`Error fetching data for election ID ${electionId}:`, error);
@@ -188,16 +201,19 @@ function App() {
     if (contract && account) {
       fetchAllElections();
     }
-  }, [contract, account, fetchAllElections]);
+  }, [contract, account, fetchAllElections]); // Dependency array: re-run if contract, account, or fetchAllElections changes
 
   // Effect to fetch details for the selected election whenever 'selectedElectionId' changes
-  // or when 'contract'/'account' changes after an election is selected
   useEffect(() => {
+    // Only fetch if a valid election ID is selected AND contract/account are ready
     if (selectedElectionId > 0 && contract && account) {
       fetchDataForSelectedElection(selectedElectionId);
     } else if (selectedElectionId === 0 && allElections.length > 0) {
-        // If no election is selected yet but we have elections, select the most recent one
+        // If no election is currently selected, but we have elections, select the most recent one
         setSelectedElectionId(allElections[allElections.length - 1].id);
+    } else {
+        // If no elections exist or no election is selected, clear current details
+        setCurrentElectionDetails(null);
     }
   }, [selectedElectionId, contract, account, fetchDataForSelectedElection, allElections]);
 
@@ -216,7 +232,7 @@ function App() {
             setProvider(newProvider);
             setSigner(newSigner);
             setContract(newContract);
-            showMessage(`Switched to account: ${newAccount}`, 'success');
+            showMessage(`Switched to account: ${newAccount.substring(0, 6)}...${newAccount.substring(newAccount.length - 4)}`, 'success');
           } catch (error) {
             console.error("Error re-initializing wallet on account change:", error);
             showMessage(`Error re-connecting wallet: ${error.message}`, 'error');
@@ -241,6 +257,7 @@ function App() {
 
       const handleChainChanged = (_chainId) => {
         showMessage('Network changed. Please reload the page.', 'error', 10000);
+        // A slight delay ensures the message is visible before reload
         setTimeout(() => window.location.reload(), 1000);
       };
 
@@ -248,6 +265,7 @@ function App() {
       window.ethereum.on('chainChanged', handleChainChanged);
 
       return () => {
+        // Clean up event listeners on component unmount
         window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
         window.ethereum.removeListener('chainChanged', handleChainChanged);
       };
@@ -289,31 +307,34 @@ function App() {
       <MessageDisplay message={message} />
       <LoadingOverlay isLoading={isLoading} />
 
-      <div className="w-full max-w-3xl mx-auto">
+      {/* Outer container to control overall content width and centering */}
+      {/* max-w-screen-xl (1280px) is a good balance for content width. Adjust if you need more or less. */}
+      {/* px-4 sm:px-6 lg:px-8 provides responsive horizontal padding for the container itself */}
+      <div className="w-full max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
-        <header className="mb-8 p-6 bg-gray-800 rounded-xl shadow-2xl">
-          <div className="flex justify-between items-center">
-            <h1 className="text-4xl font-bold text-sky-400">CoreDAO Voting DApp</h1>
+        <header className="mb-8 p-4 sm:p-6 bg-gray-800 rounded-xl shadow-2xl">
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-sky-400 text-center sm:text-left">CoreDAO Voting DApp</h1>
             {!account ? (
               <button
                 onClick={connectWallet}
                 disabled={isLoading}
-                className="px-6 py-2 bg-sky-500 hover:bg-sky-600 rounded-lg text-white font-semibold transition duration-150 ease-in-out disabled:opacity-50"
+                className="px-5 py-2 sm:px-6 sm:py-2 bg-sky-500 hover:bg-sky-600 rounded-lg text-white font-semibold transition duration-150 ease-in-out disabled:opacity-50 text-sm sm:text-base"
               >
                 Connect Wallet
               </button>
             ) : (
-              <div className="text-right">
-                <p className="text-sm text-gray-400">Connected Account:</p>
-                <p className="text-md font-mono break-all">{account}</p>
+              <div className="text-center sm:text-right">
+                <p className="text-xs sm:text-sm text-gray-400">Connected Account:</p>
+                <p className="text-sm sm:text-base font-mono break-all">{account}</p>
               </div>
             )}
           </div>
           {/* Display current election details */}
           {currentElectionDetails && (
-            <p className="mt-2 text-xl text-gray-300">
+            <p className="mt-3 text-base sm:text-lg text-gray-300 text-center sm:text-left">
               Election: <span className="font-semibold">{currentElectionDetails.name} (ID: {currentElectionDetails.id})</span>
-              <span className={`ml-3 px-2 py-1 rounded-full text-xs font-medium
+              <span className={`ml-2 px-2 py-1 rounded-full text-xs font-medium
                 ${currentElectionDetails.isActive ? 'bg-green-600 text-white' :
                   currentElectionDetails.isCompleted ? 'bg-red-600 text-white' :
                   'bg-yellow-600 text-white'}`}>
@@ -328,70 +349,83 @@ function App() {
             <ElectionSelector
                 elections={allElections}
                 selectedElectionId={selectedElectionId}
-                onSelectElection={setSelectedElectionId} // Function to update selectedElectionId
+                onSelectElection={setSelectedElectionId}
             />
         )}
 
 
         {/* Main Content - Conditional Rendering based on isAdmin */}
         {account && contract ? (
-          <main className="space-y-8">
+          <main className="mt-8"> {/* Adjusted margin-top for spacing from header/selector */}
             {isAdmin ? (
+              // Admin dashboard takes full width when active
               <AdminDashboard
                 contract={contract}
                 isLoading={isLoading}
                 showMessage={showMessage}
                 account={account}
-                allElections={allElections} // Pass all elections to admin dashboard
+                allElections={allElections}
                 selectedElectionId={selectedElectionId}
-                currentElectionDetails={currentElectionDetails} // Pass details for current selected election
-                refreshAllElections={fetchAllElections} // To refresh the list of all elections
-                refreshSelectedElection={fetchDataForSelectedElection} // To refresh details of the selected election
-                setSelectedElectionId={setSelectedElectionId} // Allow admin to change selected election via ElectionSelector
+                currentElectionDetails={currentElectionDetails}
+                refreshAllElections={fetchAllElections}
+                refreshSelectedElection={fetchDataForSelectedElection}
+                setSelectedElectionId={setSelectedElectionId}
               />
             ) : (
-              // Regular Voter/Candidate view
-              <>
-                <VoterPanel
-                  voterInfo={voterInfo}
-                  electionName={currentElectionDetails ? currentElectionDetails.name : 'Loading...'}
-                  electionId={selectedElectionId}
-                  electionStatus={currentElectionDetails ? currentElectionDetails.isActive ? 'Active' : currentElectionDetails.isCompleted ? 'Completed' : 'Scheduled' : 'Unknown'}
-                  startTime={currentElectionDetails ? currentElectionDetails.startTime : 0}
-                  endTime={currentElectionDetails ? currentElectionDetails.endTime : 0}
-                />
-                <CandidateList
-                  candidates={candidates}
-                  totalVotes={totalVotes}
-                  voterInfo={voterInfo}
-                  isLoading={isLoading}
-                  handleVote={handleVote}
-                  electionActive={currentElectionDetails ? currentElectionDetails.isActive : false} // Pass active status to disable voting if not active
-                />
-              </>
+              // Regular Voter/Candidate view - Use Grid for responsive two-column layout
+              // Stacks on small screens (grid-cols-1), goes to 2 columns on medium screens (md:grid-cols-2)
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* Voter Panel takes one column */}
+                <div>
+                  <VoterPanel
+                    voterInfo={voterInfo}
+                    electionName={currentElectionDetails ? currentElectionDetails.name : 'Loading...'}
+                    electionId={selectedElectionId}
+                    electionStatus={(currentElectionDetails
+                      ? currentElectionDetails.isActive
+                        ? 'Active'
+                        : currentElectionDetails.isCompleted
+                          ? 'Completed'
+                          : 'Unknown'
+                      : 'Unknown')}
+                    startTime={currentElectionDetails ? currentElectionDetails.startTime : 0}
+                    endTime={currentElectionDetails ? currentElectionDetails.endTime : 0}
+                  />
+                </div>
+                {/* Candidate List takes the other column */}
+                <div>
+                  <CandidateList
+                    candidates={candidates}
+                    totalVotes={totalVotes}
+                    voterInfo={voterInfo}
+                    isLoading={isLoading}
+                    handleVote={handleVote}
+                    electionActive={currentElectionDetails ? currentElectionDetails.isActive : false}
+                  />
+                </div>
+              </div>
             )}
           </main>
         ) : (
           // Display for unconnected or unconfigured state
-          <>
+          <div className="mt-10 text-center p-4 sm:p-6 bg-gray-800 rounded-xl shadow-2xl">
             {!account && (
-              <div className="mt-10 text-center">
-                <p className="text-xl text-gray-400">Please connect your MetaMask wallet to use the DApp.</p>
-                <p className="text-sm text-gray-500 mt-2">Ensure you are on the correct network (e.g., CoreDAO Mainnet or Testnet).</p>
-              </div>
+              <p className="text-lg sm:text-xl text-gray-400">Please connect your MetaMask wallet to use the DApp.</p>
             )}
+            <p className="text-sm sm:text-base text-gray-500 mt-2">Ensure you are on the correct network (e.g., CoreDAO Mainnet or Testnet).</p>
             {account && CONTRACT_ADDRESS === "0x5277697271226e191dAe06753Ba3F6F250DC1913" && (
-              <div className="mt-10 text-center p-4 bg-yellow-700 rounded-lg">
-                <p className="text-xl text-white font-semibold">Configuration Needed!</p>
-                <p className="text-md text-yellow-200 mt-2">
-                  Please update the <code>CONTRACT_ADDRESS</code> in <code>App.js</code> with your deployed smart contract's address.
+              <div className="mt-6 p-3 sm:p-4 bg-yellow-700 rounded-lg">
+                <p className="text-lg sm:text-xl text-white font-semibold">Configuration Needed!</p>
+                <p className="text-sm sm:text-md text-yellow-200 mt-2">
+                  Please update the `CONTRACT_ADDRESS` in `App.js` with your deployed smart contract's address.
                 </p>
               </div>
             )}
-          </>
+          </div>
         )}
-      </div>
-      <footer className="w-full max-w-3xl mx-auto mt-12 mb-6 text-center text-gray-500 text-sm">
+      </div> {/* End of main content wrapper */}
+
+      <footer className="w-full max-w-screen-xl mx-auto mt-12 mb-6 text-center text-gray-500 text-xs sm:text-sm">
         <p>CoreDAO Voting DApp &copy; 2024</p>
         <p>Ensure your MetaMask is connected to the appropriate CoreDAO network.</p>
       </footer>
