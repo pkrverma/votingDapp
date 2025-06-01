@@ -2,58 +2,225 @@
 pragma solidity ^0.8.9;
 
 contract votingContract {
+
+    // --- Structs ---
+
+    // Struct to represent a candidate within a specific election
     struct Candidate {
         uint id;
         string name;
         uint voteCount;
     }
-    
+
+    // Struct to represent a voter's status within a specific election
     struct Voter {
-        bool authorized;
-        bool voted;
-        uint vote;
+        bool authorized; // True if the admin authorized this address for the election
+        bool voted;      // True if this address has already voted in this election
+        uint vote;       // The ID of the candidate voted for (0 if not voted)
     }
-    
-    address public admin;
-    string public electionName;
-    mapping(address => Voter) public voters;
-    mapping(uint => Candidate) public candidates;
-    uint public candidatesCount;
-    uint public totalVotes;
-    
-    modifier onlyAdmin() {
-        require(msg.sender == admin, "Only admin can perform this action");
+
+    // Struct to represent an entire election
+    struct Election {
+        uint id;
+        string name;
+        address admin; // The admin who created this specific election (can be the contract deployer or another admin)
+        uint startTime; // Timestamp when voting starts
+        uint endTime;   // Timestamp when voting ends
+        bool isActive;  // True if voting is currently open
+        bool isCompleted; // True if voting has officially ended
+        uint candidatesCount; // Total candidates in THIS election
+        uint totalVotesCast;  // Total votes cast in THIS election
+        // Mappings for candidates and voters within this specific election
+        mapping(uint => Candidate) candidates;
+        mapping(address => Voter) voters;
+    }
+
+    // --- State Variables ---
+
+    address public deployer; // The original deployer of this contract, who is the super admin
+    uint public nextElectionId; // Counter for unique election IDs
+
+    // Mapping to store all elections by their ID
+    mapping(uint => Election) public elections;
+
+    // --- Modifiers ---
+
+    // Only the deployer of the contract can call this (super admin)
+    modifier onlyDeployer() {
+        require(msg.sender == deployer, "Only contract deployer can perform this action");
         _;
     }
-    
-    constructor(string memory _name) {
-        admin = msg.sender;
-        electionName = _name;
+
+    // Only the admin of a specific election can call this
+    modifier onlyElectionAdmin(uint _electionId) {
+        require(elections[_electionId].admin == msg.sender, "Only election admin can perform this action");
+        _;
     }
-    
-    function addCandidate(string memory _name) public onlyAdmin {
-        candidatesCount++;
-        candidates[candidatesCount] = Candidate(candidatesCount, _name, 0);
+
+    // Checks if an election exists
+    modifier electionExists(uint _electionId) {
+        require(_electionId > 0 && _electionId < nextElectionId, "Election does not exist");
+        _;
     }
-    
-    function authorizeVoter(address _voter) public onlyAdmin {
-        voters[_voter].authorized = true;
+
+    // Checks if voting is currently active for an election
+    modifier votingIsActive(uint _electionId) {
+        require(elections[_electionId].isActive == true, "Voting is not active for this election");
+        require(block.timestamp >= elections[_electionId].startTime, "Voting has not started yet");
+        require(block.timestamp <= elections[_electionId].endTime, "Voting has already ended");
+        _;
     }
-    
-    function vote(uint _candidateId) public {
-        require(voters[msg.sender].authorized, "Not authorized to vote");
-        require(!voters[msg.sender].voted, "Already voted");
-        require(_candidateId > 0 && _candidateId <= candidatesCount, "Invalid candidate ID");
-        
-        voters[msg.sender].voted = true;
-        voters[msg.sender].vote = _candidateId;
-        candidates[_candidateId].voteCount++;
-        totalVotes++;
+
+    // --- Events (Highly Recommended for Frontend Interaction) ---
+    event ElectionCreated(uint indexed electionId, string name, address indexed admin, uint startTime, uint endTime);
+    event ElectionStarted(uint indexed electionId, string name, uint timestamp);
+    event ElectionEnded(uint indexed electionId, string name, uint timestamp);
+    event CandidateAdded(uint indexed electionId, uint indexed candidateId, string name);
+    event VoterAuthorized(uint indexed electionId, address indexed voterAddress);
+    event Voted(uint indexed electionId, address indexed voterAddress, uint indexed candidateId);
+
+
+    // --- Constructor ---
+
+    // The deployer becomes the super admin
+    constructor() {
+        deployer = msg.sender;
+        nextElectionId = 1; // Start election IDs from 1
     }
-    
-    function getCandidate(uint _candidateId) public view returns (uint, string memory, uint) {
-        require(_candidateId > 0 && _candidateId <= candidatesCount, "Invalid candidate ID");
-        Candidate memory c = candidates[_candidateId];
+
+    // --- Admin Functions (Accessible by Deployer) ---
+
+    function createElection(string memory _name, uint _startTime, uint _endTime) public onlyDeployer {
+        require(bytes(_name).length > 0, "Election name cannot be empty");
+        require(_startTime >= block.timestamp, "Start time cannot be in the past");
+        require(_endTime > _startTime, "End time must be after start time");
+
+        uint newId = nextElectionId;
+        elections[newId].id = newId;
+        elections[newId].name = _name;
+        elections[newId].admin = msg.sender; // The deployer is also the admin of this election
+        elections[newId].startTime = _startTime;
+        elections[newId].endTime = _endTime;
+        elections[newId].isActive = false; // Not active until explicitly started
+        elections[newId].isCompleted = false;
+        elections[newId].candidatesCount = 0;
+        elections[newId].totalVotesCast = 0;
+
+        nextElectionId++; // Increment for the next election
+
+        emit ElectionCreated(newId, _name, msg.sender, _startTime, _endTime);
+    }
+
+    function startElection(uint _electionId) public onlyElectionAdmin(_electionId) electionExists(_electionId) {
+        Election storage election = elections[_electionId];
+        require(!election.isActive, "Election is already active");
+        require(!election.isCompleted, "Election is already completed");
+        require(block.timestamp < election.endTime, "Election end time has passed");
+        require(block.timestamp >= election.startTime, "Election has not reached start time yet"); // Can only start if time has reached
+
+        election.isActive = true;
+        emit ElectionStarted(_electionId, election.name, block.timestamp);
+    }
+
+    function endElection(uint _electionId) public onlyElectionAdmin(_electionId) electionExists(_electionId) {
+        Election storage election = elections[_electionId];
+        require(election.isActive, "Election is not active or already ended");
+
+        election.isActive = false;
+        election.isCompleted = true; // Mark as completed
+        emit ElectionEnded(_electionId, election.name, block.timestamp);
+    }
+
+    function addCandidate(uint _electionId, string memory _name) public onlyElectionAdmin(_electionId) electionExists(_electionId) {
+        Election storage election = elections[_electionId];
+        require(!election.isActive, "Cannot add candidates to an active election. End it first."); // Can add before or after, but not during active voting
+        require(bytes(_name).length > 0, "Candidate name cannot be empty");
+
+        election.candidatesCount++;
+        election.candidates[election.candidatesCount] = Candidate(election.candidatesCount, _name, 0);
+
+        emit CandidateAdded(_electionId, election.candidatesCount, _name);
+    }
+
+    function authorizeVoter(uint _electionId, address _voterAddress) public onlyElectionAdmin(_electionId) electionExists(_electionId) {
+        Election storage election = elections[_electionId];
+        require(!election.isActive, "Cannot authorize voters for an active election. End it first."); // Can authorize before or after, but not during active voting
+        require(!election.voters[_voterAddress].authorized, "Voter already authorized for this election");
+
+        election.voters[_voterAddress].authorized = true;
+        emit VoterAuthorized(_electionId, _voterAddress);
+    }
+
+    function vote(uint _electionId, uint _candidateId) public electionExists(_electionId) votingIsActive(_electionId) {
+        Election storage election = elections[_electionId];
+        require(election.voters[msg.sender].authorized, "Not authorized to vote in this election");
+        require(!election.voters[msg.sender].voted, "Already voted in this election");
+        require(_candidateId > 0 && _candidateId <= election.candidatesCount, "Invalid candidate ID for this election");
+
+        election.voters[msg.sender].voted = true;
+        election.voters[msg.sender].vote = _candidateId;
+        election.candidates[_candidateId].voteCount++;
+        election.totalVotesCast++;
+
+        emit Voted(_electionId, msg.sender, _candidateId);
+    }
+
+    // --- View Functions ---
+
+    function getElectionDetails(uint _electionId)
+        public
+        view
+        electionExists(_electionId)
+        returns (
+            uint id,
+            string memory name,
+            address adminAddr,
+            uint startTime,
+            uint endTime,
+            bool isActive,
+            bool isCompleted,
+            uint candidatesCount,
+            uint totalVotesCast
+        )
+    {
+        Election storage election = elections[_electionId];
+        return (
+            election.id,
+            election.name,
+            election.admin,
+            election.startTime,
+            election.endTime,
+            election.isActive,
+            election.isCompleted,
+            election.candidatesCount,
+            election.totalVotesCast
+        );
+    }
+
+    function getCandidate(uint _electionId, uint _candidateId)
+        public
+        view
+        electionExists(_electionId)
+        returns (uint, string memory, uint)
+    {
+        Election storage election = elections[_electionId];
+        require(_candidateId > 0 && _candidateId <= election.candidatesCount, "Invalid candidate ID for this election");
+        Candidate storage c = election.candidates[_candidateId];
         return (c.id, c.name, c.voteCount);
+    }
+
+    function getVoter(uint _electionId, address _voterAddress)
+        public
+        view
+        electionExists(_electionId)
+        returns (bool authorized, bool voted, uint candidateIdVotedFor) // Renamed 'vote' to 'candidateIdVotedFor'
+    {
+        Election storage election = elections[_electionId];
+        Voter storage v = election.voters[_voterAddress];
+        return (v.authorized, v.voted, v.vote); // Still returning v.vote, which is the internal struct member
+    }
+
+    function getElectionsCount() public view returns (uint) {
+        return nextElectionId - 1; // nextElectionId starts at 1, so count is one less
     }
 }
