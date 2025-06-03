@@ -30,6 +30,13 @@ function AdminDashboard({
     return Math.floor(new Date(datetimeLocal).getTime() / 1000);
   };
 
+  // Helper to format Unix timestamp to a readable date/time string
+  const formatUnixTimestamp = (timestamp) => {
+    if (timestamp === 0) return "N/A";
+    const date = new Date(timestamp * 1000); // Convert seconds to milliseconds
+    return date.toLocaleString(); // Formats to local date and time
+  };
+
   // --- Admin Actions ---
 
   const handleCreateElection = async (e) => {
@@ -228,6 +235,9 @@ function AdminDashboard({
               <p className="text-gray-300">Status: <span className={`font-semibold ${currentElectionDetails.isActive ? 'text-green-400' : currentElectionDetails.isCompleted ? 'text-red-400' : 'text-yellow-400'}`}>
                 {currentElectionDetails.isActive ? 'Active' : currentElectionDetails.isCompleted ? 'Completed' : 'Scheduled'}
               </span></p>
+              {/* Display Start and End Times */}
+              <p className="text-gray-300">Starts: <span className="font-semibold">{formatUnixTimestamp(currentElectionDetails.startTime)}</span></p>
+              <p className="text-gray-300">Ends: <span className="font-semibold">{formatUnixTimestamp(currentElectionDetails.endTime)}</span></p>
               <button
                 onClick={handleStartElection}
                 disabled={isLoading || !contract || selectedElectionId === 0 || currentElectionDetails.isActive || currentElectionDetails.isCompleted || currentElectionDetails.startTime > Math.floor(Date.now() / 1000)}
@@ -249,7 +259,6 @@ function AdminDashboard({
         </div>
 
         {/* Add Candidate & Candidate List (Combined) */}
-        {/* Changed md:col-span-2 to just occupy a single column in the grid */}
         <div className="bg-gray-900 p-6 rounded-xl shadow-lg">
           <h2 className="text-xl font-semibold mb-4 text-sky-400">Add & Manage Candidates</h2>
           {currentElectionDetails && currentElectionDetails.id !== 0 ? (

@@ -3,7 +3,7 @@ import React from 'react';
 
 function CandidateList({ candidates, totalVotes, voterInfo, isLoading, handleVote, electionActive }) {
   return (
-    <div className="candidate-list p-6 bg-gray-800 rounded-xl shadow-2xl mb-8">
+    <div className="candidate-list p-6 bg-gray-900 rounded-xl shadow-2xl mb-8 ml-3">
       <h2 className="text-3xl font-bold mb-4 text-purple-400 border-b border-gray-700 pb-2">Candidates</h2>
       {candidates.length === 0 ? (
         <p className="text-gray-400">No candidates registered for this election yet.</p>

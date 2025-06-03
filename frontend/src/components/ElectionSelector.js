@@ -7,7 +7,7 @@ function ElectionSelector({ elections, selectedElectionId, onSelectElection }) {
   }
 
   return (
-    <div className="mb-8 p-4 sm:p-5 bg-gray-700 rounded-lg shadow-md flex flex-col sm:flex-row items-center justify-between gap-3">
+    <div className="mb-8 p-4 sm:p-5 bg-gray-800 rounded-lg shadow-md flex flex-col sm:flex-row items-center justify-between gap-3">
       <label htmlFor="election-select" className="text-lg sm:text-xl font-semibold text-white">
         Select an Election:
       </label>
