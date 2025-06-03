@@ -1,413 +1,357 @@
 import React, { useState } from 'react';
 import { ethers } from 'ethers';
 
-// Helper for formatting Unix timestamps
-const formatTimestamp = (timestamp) => {
-  if (!timestamp || timestamp === 0) return 'N/A';
-  const date = new Date(Number(timestamp) * 1000); // Convert to milliseconds
-  return date.toLocaleString(); // Format as local date and time
-};
-
 function AdminDashboard({
   contract,
   isLoading,
   showMessage,
-  account,
-  allElections,
   selectedElectionId,
   currentElectionDetails,
   refreshAllElections,
   refreshSelectedElection,
-  setSelectedElectionId // Added for potential direct selection
+  candidates, // Added to display candidates for removal
+  handleRemoveCandidate // Added to pass down the remove function
 }) {
-  // State for new election creation
+  // Election Management States
   const [newElectionName, setNewElectionName] = useState('');
-  const [newElectionStartTime, setNewElectionStartTime] = useState('');
-  const [newElectionEndTime, setNewElectionEndTime] = useState('');
+  const [newStartTime, setNewStartTime] = useState('');
+  const [newEndTime, setNewEndTime] = useState('');
 
-  // State for voter management
-  const [voterAddress, setVoterAddress] = useState('');
-  const [authorizeVoterAmount, setAuthorizeVoterAmount] = useState(''); // Could be used for token-gated auth
+  // Candidate Management States
+  const [newCandidateName, setNewCandidateName] = useState('');
 
-  // State for candidate management
-  const [candidateName, setCandidateName] = useState('');
+  // Voter Authorization States
+  const [voterAddressToAuth, setVoterAddressToAuth] = useState('');
 
-  // --- Admin Functions ---
+  // Helper to convert datetime-local to Unix timestamp
+  const datetimeToUnix = (datetimeLocal) => {
+    if (!datetimeLocal) return 0;
+    // Date.parse returns milliseconds, so divide by 1000 for seconds
+    return Math.floor(new Date(datetimeLocal).getTime() / 1000);
+  };
 
-  const handleCreateElection = async () => {
-    if (!contract || isLoading) return;
+  // --- Admin Actions ---
 
-    const startTime = new Date(newElectionStartTime).getTime() / 1000;
-    const endTime = new Date(newElectionEndTime).getTime() / 1000;
-
-    if (!newElectionName || !startTime || !endTime || startTime >= endTime) {
-      showMessage('Please provide a valid name, start, and end time. End time must be after start time.', 'error');
+  const handleCreateElection = async (e) => {
+    e.preventDefault();
+    if (!contract) {
+      showMessage("Contract not loaded.", "error");
       return;
     }
+    const startUnix = datetimeToUnix(newStartTime);
+    const endUnix = datetimeToUnix(newEndTime);
 
-    if (isNaN(startTime) || isNaN(endTime)) {
-      showMessage('Invalid date/time format. Please use a valid date and time.', 'error');
+    // Basic validation
+    if (!newElectionName || startUnix === 0 || endUnix === 0) {
+      showMessage("Please fill all election fields.", "error");
       return;
     }
-
-    // Check if end time is in the past relative to current timestamp
-    if (new Date().getTime() / 1000 > endTime) {
-      showMessage('End time cannot be in the past.', 'error');
+    if (startUnix <= Math.floor(Date.now() / 1000)) {
+      showMessage("Start time cannot be in the past.", "error");
       return;
     }
-
+    if (endUnix <= startUnix) {
+      showMessage("End time must be after start time.", "error");
+      return;
+    }
 
     try {
-      // Check if wallet is connected to the right chain
-      const network = await contract.runner.provider.getNetwork();
-      console.log("Connected to network:", network.name, network.chainId);
-
-      showMessage('Creating election...', 'info');
-      const tx = await contract.createElection(newElectionName, Math.floor(startTime), Math.floor(endTime));
+      showMessage("Creating election... please confirm in MetaMask.", "info");
+      const tx = await contract.createElection(newElectionName, startUnix, endUnix);
       await tx.wait();
-      showMessage(`Election "${newElectionName}" created successfully!`, 'success');
+      showMessage(`Election "${newElectionName}" created successfully!`, "success");
       setNewElectionName('');
-      setNewElectionStartTime('');
-      setNewElectionEndTime('');
-      refreshAllElections(); // Refresh the list of all elections
+      setNewStartTime('');
+      setNewEndTime('');
+      await refreshAllElections(); // Refresh the list of all elections
     } catch (error) {
       console.error("Error creating election:", error);
-      showMessage(`Error creating election: ${error.data?.message || error.message || 'Transaction failed'}`, 'error');
+      showMessage(`Failed to create election: ${error.data?.message || error.reason || error.message}`, "error");
     }
   };
 
-  const handleAddCandidate = async () => {
-    if (!contract || isLoading || selectedElectionId === 0) return;
-    if (!candidateName) {
-      showMessage('Please enter a candidate name.', 'error');
+  const handleStartElection = async () => {
+    if (!contract || selectedElectionId === 0) {
+      showMessage("Please select an election.", "error");
+      return;
+    }
+    if (!currentElectionDetails || currentElectionDetails.isActive || currentElectionDetails.isCompleted) {
+      showMessage("Election cannot be started (already active or completed).", "error");
       return;
     }
     try {
-      showMessage(`Adding candidate "${candidateName}" to election ID ${selectedElectionId}...`, 'info');
-      const tx = await contract.addCandidate(selectedElectionId, candidateName);
+      showMessage("Starting election... please confirm in MetaMask.", "info");
+      const tx = await contract.startElection(selectedElectionId);
       await tx.wait();
-      showMessage(`Candidate "${candidateName}" added successfully!`, 'success');
-      setCandidateName('');
-      refreshSelectedElection(selectedElectionId); // Refresh candidates for current election
+      showMessage(`Election ID ${selectedElectionId} started!`, "success");
+      await refreshSelectedElection(selectedElectionId); // Refresh details for the selected election
     } catch (error) {
-      console.error("Error adding candidate:", error);
-      showMessage(`Error adding candidate: ${error.data?.message || error.message || 'Transaction failed'}`, 'error');
-    }
-  };
-
-  const handleAuthorizeVoter = async () => {
-    if (!contract || isLoading || selectedElectionId === 0) return;
-    if (!ethers.isAddress(voterAddress)) { // Using ethers.isAddress for address validation
-      showMessage('Please enter a valid Ethereum address.', 'error');
-      return;
-    }
-
-    try {
-      showMessage(`Authorizing voter ${voterAddress} for election ID ${selectedElectionId}...`, 'info');
-      const tx = await contract.authorizeVoter(selectedElectionId, voterAddress);
-      await tx.wait();
-      showMessage(`Voter ${voterAddress} authorized successfully!`, 'success');
-      setVoterAddress('');
-      refreshSelectedElection(selectedElectionId); // Refresh voter info (though not directly visible here)
-    } catch (error) {
-      console.error("Error authorizing voter:", error);
-      showMessage(`Error authorizing voter: ${error.data?.message || error.message || 'Transaction failed'}`, 'error');
-    }
-  };
-
-  const handleRemoveVoterAuthorization = async () => {
-    if (!contract || isLoading || selectedElectionId === 0) return;
-    if (!ethers.isAddress(voterAddress)) {
-      showMessage('Please enter a valid Ethereum address to de-authorize.', 'error');
-      return;
-    }
-
-    try {
-      showMessage(`Revoking authorization for voter ${voterAddress} in election ID ${selectedElectionId}...`, 'info');
-      const tx = await contract.removeVoterAuthorization(selectedElectionId, voterAddress);
-      await tx.wait();
-      showMessage(`Voter ${voterAddress} de-authorized successfully!`, 'success');
-      setVoterAddress('');
-      refreshSelectedElection(selectedElectionId);
-    } catch (error) {
-      console.error("Error revoking voter authorization:", error);
-      showMessage(`Error revoking authorization: ${error.data?.message || error.message || 'Transaction failed'}`, 'error');
+      console.error("Error starting election:", error);
+      showMessage(`Failed to start election: ${error.data?.message || error.reason || error.message}`, "error");
     }
   };
 
   const handleEndElection = async () => {
-    if (!contract || isLoading || selectedElectionId === 0 || !currentElectionDetails || currentElectionDetails.isCompleted) return;
-    if (!currentElectionDetails.isActive) {
-      showMessage('This election is not currently active. It cannot be ended prematurely unless active.', 'error');
+    if (!contract || selectedElectionId === 0) {
+      showMessage("Please select an election.", "error");
       return;
     }
-    const confirmEnd = window.confirm(`Are you sure you want to end election "${currentElectionDetails.name}" (ID: ${selectedElectionId})? This action is irreversible.`);
-    if (!confirmEnd) return;
-
+    if (!currentElectionDetails || !currentElectionDetails.isActive) {
+      showMessage("Election is not active and cannot be ended.", "error");
+      return;
+    }
     try {
-      showMessage(`Ending election ID ${selectedElectionId}...`, 'info');
+      showMessage("Ending election... please confirm in MetaMask.", "info");
       const tx = await contract.endElection(selectedElectionId);
       await tx.wait();
-      showMessage(`Election "${currentElectionDetails.name}" ended successfully!`, 'success');
-      refreshAllElections(); // Refresh to update election status
-      refreshSelectedElection(selectedElectionId); // Refresh selected election details
+      showMessage(`Election ID ${selectedElectionId} ended!`, "success");
+      await refreshSelectedElection(selectedElectionId); // Refresh details for the selected election
     } catch (error) {
       console.error("Error ending election:", error);
-      showMessage(`Error ending election: ${error.data?.message || error.message || 'Transaction failed'}`, 'error');
+      showMessage(`Failed to end election: ${error.data?.message || error.reason || error.message}`, "error");
     }
   };
 
-  // NEW FUNCTION: Handle Start Election
-  const handleStartElection = async () => {
-    if (!contract || isLoading || selectedElectionId === 0 || !currentElectionDetails) return;
-
-    // Check if the election is already active or completed
-    if (currentElectionDetails.isActive || currentElectionDetails.isCompleted) {
-      showMessage('This election is already active or has completed.', 'error');
+  const handleAddCandidate = async (e) => {
+    e.preventDefault();
+    if (!contract || selectedElectionId === 0) {
+      showMessage("Please select an election.", "error");
       return;
     }
-
-    // Optional: Check if current time is past the scheduled start time
-    const currentTime = Math.floor(Date.now() / 1000);
-    if (currentTime < currentElectionDetails.startTime) {
-      showMessage('The election start time has not yet arrived. Please wait.', 'error');
+    if (!newCandidateName) {
+      showMessage("Candidate name cannot be empty.", "error");
       return;
     }
+    if (currentElectionDetails && currentElectionDetails.isActive) {
+      showMessage("Cannot add candidates to an active election. End it first.", "error");
+      return;
+    }
+    try {
+      showMessage("Adding candidate... please confirm in MetaMask.", "info");
+      const tx = await contract.addCandidate(selectedElectionId, newCandidateName);
+      await tx.wait();
+      showMessage(`Candidate "${newCandidateName}" added to Election ID ${selectedElectionId}!`, "success");
+      setNewCandidateName('');
+      await refreshSelectedElection(selectedElectionId); // Refresh candidates for the selected election
+    } catch (error) {
+      console.error("Error adding candidate:", error);
+      showMessage(`Failed to add candidate: ${error.data?.message || error.reason || error.message}`, "error");
+    }
+  };
 
-    const confirmStart = window.confirm(`Are you sure you want to start election "${currentElectionDetails.name}" (ID: ${selectedElectionId})?`);
-    if (!confirmStart) return;
+  const handleAuthorizeVoter = async (e) => {
+    e.preventDefault();
+    if (!contract || selectedElectionId === 0) {
+      showMessage("Please select an election.", "error");
+      return;
+    }
+    if (!voterAddressToAuth || !ethers.isAddress(voterAddressToAuth)) {
+      showMessage("Please enter a valid Ethereum address.", "error");
+      return;
+    }
+    if (currentElectionDetails && currentElectionDetails.isActive) {
+      showMessage("Cannot authorize voters for an active election. End it first.", "error");
+      return;
+    }
 
     try {
-      showMessage(`Starting election ID ${selectedElectionId}...`, 'info');
-      const tx = await contract.startElection(selectedElectionId);
+      showMessage(`Authorizing ${voterAddressToAuth}... please confirm in MetaMask.`, "info");
+      const tx = await contract.authorizeVoter(selectedElectionId, voterAddressToAuth);
       await tx.wait();
-      showMessage(`Election "${currentElectionDetails.name}" started successfully!`, 'success');
-      refreshAllElections(); // Refresh to update election status
-      refreshSelectedElection(selectedElectionId); // Refresh selected election details
+      showMessage(`Voter ${voterAddressToAuth} authorized for Election ID ${selectedElectionId}!`, "success");
+      setVoterAddressToAuth('');
+      await refreshSelectedElection(selectedElectionId); // Refresh voter info for the selected election
     } catch (error) {
-      console.error("Error starting election:", error);
-      showMessage(`Error starting election: ${error.data?.message || error.message || 'Transaction failed'}`, 'error');
+      console.error("Error authorizing voter:", error);
+      showMessage(`Failed to authorize voter: ${error.data?.message || error.reason || error.message}`, "error");
     }
   };
-
 
   return (
     <div className="admin-dashboard bg-gray-800 p-6 rounded-xl shadow-2xl space-y-8">
       <h2 className="text-3xl font-bold text-sky-400 mb-6 text-center">Admin Dashboard</h2>
-
-      {/* Admin Panel Sections - Using a responsive grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
-        {/* Section 1: Create New Election */}
-        <div className="bg-gray-700 p-5 rounded-lg shadow-lg">
-          <h3 className="text-xl font-semibold text-sky-300 mb-4">Create New Election</h3>
-          <div className="space-y-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        {/* Create Election */}
+        <div className="p-6 rounded-xl shadow-lg bg-gray-900">
+          <h2 className="text-xl font-semibold mb-4 text-sky-400">Create New Election</h2>
+          <form onSubmit={handleCreateElection} className="space-y-4">
             <div>
-              <label htmlFor="electionName" className="block text-sm font-medium text-gray-300 mb-1">Election Name:</label>
+              <label htmlFor="electionName" className="block text-gray-300 text-sm font-bold mb-2">Election Name</label>
               <input
                 type="text"
                 id="electionName"
                 value={newElectionName}
                 onChange={(e) => setNewElectionName(e.target.value)}
-                placeholder="e.g., CoreDAO Treasury Vote"
-                className="w-full p-2 bg-gray-600 border border-gray-500 rounded-md text-white placeholder-gray-400 focus:ring-sky-500 focus:border-sky-500"
-                disabled={isLoading}
+                className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline bg-gray-200"
+                placeholder="e.g., Community Council"
+                required
               />
             </div>
             <div>
-              <label htmlFor="startTime" className="block text-sm font-medium text-gray-300 mb-1">Start Time:</label>
+              <label htmlFor="startTime" className="block text-gray-300 text-sm font-bold mb-2">Start Time</label>
               <input
                 type="datetime-local"
                 id="startTime"
-                value={newElectionStartTime}
-                onChange={(e) => setNewElectionStartTime(e.target.value)}
-                className="w-full p-2 bg-gray-600 border border-gray-500 rounded-md text-white focus:ring-sky-500 focus:border-sky-500"
-                disabled={isLoading}
+                value={newStartTime}
+                onChange={(e) => setNewStartTime(e.target.value)}
+                className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline bg-gray-200"
+                required
               />
             </div>
             <div>
-              <label htmlFor="endTime" className="block text-sm font-medium text-gray-300 mb-1">End Time:</label>
+              <label htmlFor="endTime" className="block text-gray-300 text-sm font-bold mb-2">End Time</label>
               <input
                 type="datetime-local"
                 id="endTime"
-                value={newElectionEndTime}
-                onChange={(e) => setNewElectionEndTime(e.target.value)}
-                className="w-full p-2 bg-gray-600 border border-gray-500 rounded-md text-white focus:ring-sky-500 focus:border-sky-500"
-                disabled={isLoading}
+                value={newEndTime}
+                onChange={(e) => setNewEndTime(e.target.value)}
+                className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline bg-gray-200"
+                required
               />
             </div>
             <button
-              onClick={handleCreateElection}
-              disabled={isLoading}
-              className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition duration-150 ease-in-out disabled:opacity-50 mt-2"
+              type="submit"
+              disabled={isLoading || !contract}
+              className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition duration-150 ease-in-out disabled:opacity-50"
             >
               Create Election
             </button>
-          </div>
+          </form>
         </div>
 
-        {/* Section 2: Manage Candidates (for selected election) */}
-        <div className="bg-gray-700 p-5 rounded-lg shadow-lg">
-          <h3 className="text-xl font-semibold text-sky-300 mb-4">Manage Candidates</h3>
-          {selectedElectionId === 0 ? (
-            <p className="text-gray-400">Please select an election to manage candidates.</p>
-          ) : (
-            <div className="space-y-3">
-              <p className="text-gray-300 text-sm mb-2">For: <span className="font-semibold text-sky-200">{currentElectionDetails?.name || 'N/A'} (ID: {selectedElectionId})</span></p>
-              <div>
-                <label htmlFor="candidateName" className="block text-sm font-medium text-gray-300 mb-1">Candidate Name:</label>
-                <input
-                  type="text"
-                  id="candidateName"
-                  value={candidateName}
-                  onChange={(e) => setCandidateName(e.target.value)}
-                  placeholder="e.g., Alice"
-                  className="w-full p-2 bg-gray-600 border border-gray-500 rounded-md text-white placeholder-gray-400 focus:ring-sky-500 focus:border-sky-500"
-                  disabled={isLoading}
-                />
-              </div>
-              <button
-                onClick={handleAddCandidate}
-                disabled={isLoading}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg transition duration-150 ease-in-out disabled:opacity-50 mt-2"
-              >
-                Add Candidate
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Section 3: Manage Voters (for selected election) */}
-        <div className="bg-gray-700 p-5 rounded-lg shadow-lg">
-          <h3 className="text-xl font-semibold text-sky-300 mb-4">Manage Voters</h3>
-          {selectedElectionId === 0 ? (
-            <p className="text-gray-400">Please select an election to manage voters.</p>
-          ) : (
-            <div className="space-y-3">
-              <p className="text-gray-300 text-sm mb-2">For: <span className="font-semibold text-sky-200">{currentElectionDetails?.name || 'N/A'} (ID: {selectedElectionId})</span></p>
-              <div>
-                <label htmlFor="voterAddress" className="block text-sm font-medium text-gray-300 mb-1">Voter Address:</label>
-                <input
-                  type="text"
-                  id="voterAddress"
-                  value={voterAddress}
-                  onChange={(e) => setVoterAddress(e.target.value)}
-                  placeholder="0x..."
-                  className="w-full p-2 bg-gray-600 border border-gray-500 rounded-md text-white placeholder-gray-400 focus:ring-sky-500 focus:border-sky-500"
-                  disabled={isLoading}
-                />
-              </div>
-              <div className="flex gap-2 mt-2">
-                <button
-                  onClick={handleAuthorizeVoter}
-                  disabled={isLoading}
-                  className="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg transition duration-150 ease-in-out disabled:opacity-50"
-                >
-                  Authorize Voter
-                </button>
-                <button
-                  onClick={handleRemoveVoterAuthorization}
-                  disabled={isLoading}
-                  className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg transition duration-150 ease-in-out disabled:opacity-50"
-                >
-                  De-authorize Voter
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Section 4: Election Summary (for selected election) */}
-        <div className="bg-gray-700 p-5 rounded-lg shadow-lg col-span-1 md:col-span-2 lg:col-span-1"> {/* This section can span wider on medium/large screens */}
-          <h3 className="text-xl font-semibold text-sky-300 mb-4">Selected Election Summary</h3>
+        {/* Manage Election (Start/End) */}
+        <div className="p-6 rounded-xl shadow-lg bg-gray-900">
+          <h2 className="text-xl font-semibold mb-4 text-sky-400">Manage Election Status</h2>
           {currentElectionDetails ? (
-            <div className="text-gray-300 space-y-2">
-              <p><span className="font-medium">Name:</span> {currentElectionDetails.name}</p>
-              <p><span className="font-medium">ID:</span> {currentElectionDetails.id}</p>
-              <p><span className="font-medium">Admin:</span> {currentElectionDetails.admin.substring(0, 6)}...{currentElectionDetails.admin.substring(currentElectionDetails.admin.length - 4)}</p>
-              <p><span className="font-medium">Start:</span> {formatTimestamp(currentElectionDetails.startTime)}</p>
-              <p><span className="font-medium">End:</span> {formatTimestamp(currentElectionDetails.endTime)}</p>
-              <p><span className="font-medium">Status:</span>
-                <span className={`ml-2 px-2 py-1 rounded-full text-xs font-medium
-                  ${currentElectionDetails.isActive ? 'bg-green-600 text-white' :
-                    currentElectionDetails.isCompleted ? 'bg-red-600 text-white' :
-                      'bg-yellow-600 text-white'}`}>
-                  {currentElectionDetails.isActive ? 'Active' : currentElectionDetails.isCompleted ? 'Completed' : 'Scheduled'}
-                </span>
-              </p>
-              <p><span className="font-medium">Candidates:</span> {currentElectionDetails.candidatesCount}</p>
-              <p><span className="font-medium">Total Votes:</span> {currentElectionDetails.totalVotesCast}</p>
-
-              {/* NEW BUTTON: Start Election */}
-              {currentElectionDetails && !currentElectionDetails.isActive && !currentElectionDetails.isCompleted && (
-                <button
-                  onClick={handleStartElection}
-                  disabled={isLoading || new Date().getTime() / 1000 < currentElectionDetails.startTime}
-                  className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg transition duration-150 ease-in-out disabled:opacity-50 mt-4"
-                >
-                  {new Date().getTime() / 1000 < currentElectionDetails.startTime
-                    ? `Start (Scheduled: ${formatTimestamp(currentElectionDetails.startTime)})`
-                    : 'Start Election'}
-                </button>
-              )}
-
+            <div className="space-y-4">
+              <p className="text-gray-300">Selected: <span className="font-semibold">{currentElectionDetails.name} (ID: {currentElectionDetails.id})</span></p>
+              <p className="text-gray-300">Status: <span className={`font-semibold ${currentElectionDetails.isActive ? 'text-green-400' : currentElectionDetails.isCompleted ? 'text-red-400' : 'text-yellow-400'}`}>
+                {currentElectionDetails.isActive ? 'Active' : currentElectionDetails.isCompleted ? 'Completed' : 'Scheduled'}
+              </span></p>
+              <button
+                onClick={handleStartElection}
+                disabled={isLoading || !contract || selectedElectionId === 0 || currentElectionDetails.isActive || currentElectionDetails.isCompleted || currentElectionDetails.startTime > Math.floor(Date.now() / 1000)}
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition duration-150 ease-in-out disabled:opacity-50"
+              >
+                Start Election
+              </button>
               <button
                 onClick={handleEndElection}
-                disabled={isLoading || !currentElectionDetails.isActive}
-                className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded-lg transition duration-150 ease-in-out disabled:opacity-50 mt-2"
+                disabled={isLoading || !contract || selectedElectionId === 0 || !currentElectionDetails.isActive}
+                className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition duration-150 ease-in-out disabled:opacity-50"
               >
                 End Election
               </button>
             </div>
           ) : (
-            <p className="text-gray-400">No election selected or details loading...</p>
+            <p className="text-gray-400">Select an election to manage its status.</p>
           )}
         </div>
 
-        {/* Section 5: All Elections List */}
-        <div className="bg-gray-700 p-5 rounded-lg shadow-lg col-span-1 md:col-span-2 lg:col-span-full"> {/* This section spans full width on larger screens */}
-          <h3 className="text-xl font-semibold text-sky-300 mb-4">All Elections</h3>
-          {allElections.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-600">
-                <thead className="bg-gray-600">
-                  <tr>
-                    <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">ID</th>
-                    <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Name</th>
-                    <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Status</th>
-                    <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Votes</th>
-                    <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Action</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-gray-700 divide-y divide-gray-600">
-                  {allElections.map((election) => (
-                    <tr key={election.id} className={`${selectedElectionId === election.id ? 'bg-sky-900/30' : ''}`}>
-                      <td className="px-3 py-2 whitespace-nowrap text-sm font-medium text-white">{election.id}</td>
-                      <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-200">{election.name}</td>
-                      <td className="px-3 py-2 whitespace-nowrap">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium
-                          ${election.isActive ? 'bg-green-600 text-white' :
-                            election.isCompleted ? 'bg-red-600 text-white' :
-                              'bg-yellow-600 text-white'}`}>
-                          {election.isActive ? 'Active' : election.isCompleted ? 'Completed' : 'Scheduled'}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 whitespace-nowrap text-sm text-gray-200">{election.totalVotesCast}</td>
-                      <td className="px-3 py-2 whitespace-nowrap text-right text-sm font-medium">
-                        <button
-                          onClick={() => setSelectedElectionId(election.id)}
-                          className={`text-sky-400 hover:text-sky-600 transition duration-150 ease-in-out
-                            ${selectedElectionId === election.id ? 'font-bold' : ''}`}
-                        >
-                          {selectedElectionId === election.id ? 'Selected' : 'Select'}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+        {/* Add Candidate & Candidate List (Combined) */}
+        {/* Changed md:col-span-2 to just occupy a single column in the grid */}
+        <div className="bg-gray-900 p-6 rounded-xl shadow-lg">
+          <h2 className="text-xl font-semibold mb-4 text-sky-400">Add & Manage Candidates</h2>
+          {currentElectionDetails && currentElectionDetails.id !== 0 ? (
+            <div className="flex flex-col space-y-6">
+              {/* Add Candidate Form */}
+              <div className="flex-grow">
+                <form onSubmit={handleAddCandidate} className="space-y-4 mb-6 pb-6 border-b border-gray-700">
+                  <p className="text-gray-300">Adding to: <span className="font-semibold">{currentElectionDetails.name} (ID: {currentElectionDetails.id})</span></p>
+                  <div>
+                    <label htmlFor="candidateName" className="block text-gray-300 text-sm font-bold mb-2">New Candidate Name</label>
+                    <input
+                      type="text"
+                      id="candidateName"
+                      value={newCandidateName}
+                      onChange={(e) => setNewCandidateName(e.target.value)}
+                      className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline bg-gray-200"
+                      placeholder="e.g., Jane Doe"
+                      required
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={isLoading || !contract || selectedElectionId === 0 || (currentElectionDetails && currentElectionDetails.isActive)}
+                    className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition duration-150 ease-in-out disabled:opacity-50"
+                  >
+                    Add Candidate
+                  </button>
+                </form>
+              </div>
+
+              {/* Candidate List for Removal */}
+              <div className="flex-grow">
+                <h3 className="text-lg font-semibold mb-3 text-sky-300">Current Candidates for {currentElectionDetails.name}</h3>
+                {candidates.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-700">
+                      <thead className="bg-gray-700">
+                        <tr>
+                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">ID</th>
+                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Name</th>
+                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Votes</th>
+                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-gray-800 divide-y divide-gray-700">
+                        {candidates.map((candidate) => (
+                          <tr key={candidate.id}>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-100">{candidate.id}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{candidate.name}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{candidate.voteCount}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                              <button
+                                onClick={() => handleRemoveCandidate(candidate.id)}
+                                disabled={isLoading || !contract || (currentElectionDetails && currentElectionDetails.isActive)} // Cannot remove from active election
+                                className="bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-3 rounded text-xs disabled:opacity-50"
+                              >
+                                Remove
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="text-gray-400">No candidates added yet for this election.</p>
+                )}
+              </div>
             </div>
           ) : (
-            <p className="text-gray-400">No elections found. Create one above!</p>
+            <p className="text-gray-400">Select an election to add and manage candidates.</p>
+          )}
+        </div>
+
+        {/* Authorize Voter */}
+        <div className="bg-gray-900 p-6 rounded-xl shadow-lg">
+          <h2 className="text-xl font-semibold mb-4 text-sky-400">Authorize Voter</h2>
+          {currentElectionDetails && currentElectionDetails.id !== 0 ? (
+            <form onSubmit={handleAuthorizeVoter} className="space-y-4">
+              <p className="text-gray-300">For: <span className="font-semibold">{currentElectionDetails.name} (ID: {currentElectionDetails.id})</span></p>
+              <div>
+                <label htmlFor="voterAddress" className="block text-gray-300 text-sm font-bold mb-2">Voter Address</label>
+                <input
+                  type="text"
+                  id="voterAddress"
+                  value={voterAddressToAuth}
+                  onChange={(e) => setVoterAddressToAuth(e.target.value)}
+                  className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline bg-gray-200"
+                  placeholder="0x..."
+                  required
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={isLoading || !contract || selectedElectionId === 0 || (currentElectionDetails && currentElectionDetails.isActive)}
+                className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition duration-150 ease-in-out disabled:opacity-50"
+              >
+                Authorize Voter
+              </button>
+            </form>
+          ) : (
+            <p className="text-gray-400">Select an election to authorize voters.</p>
           )}
         </div>
       </div>
