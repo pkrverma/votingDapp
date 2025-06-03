@@ -46,13 +46,14 @@ function AdminDashboard({
     }
 
     if (isNaN(startTime) || isNaN(endTime)) {
-        showMessage('Invalid date/time format. Please use a valid date and time.', 'error');
-        return;
+      showMessage('Invalid date/time format. Please use a valid date and time.', 'error');
+      return;
     }
 
+    // Check if end time is in the past relative to current timestamp
     if (new Date().getTime() / 1000 > endTime) {
-        showMessage('End time cannot be in the past.', 'error');
-        return;
+      showMessage('End time cannot be in the past.', 'error');
+      return;
     }
 
 
@@ -137,8 +138,8 @@ function AdminDashboard({
   const handleEndElection = async () => {
     if (!contract || isLoading || selectedElectionId === 0 || !currentElectionDetails || currentElectionDetails.isCompleted) return;
     if (!currentElectionDetails.isActive) {
-        showMessage('This election is not currently active. It cannot be ended prematurely unless active.', 'error');
-        return;
+      showMessage('This election is not currently active. It cannot be ended prematurely unless active.', 'error');
+      return;
     }
     const confirmEnd = window.confirm(`Are you sure you want to end election "${currentElectionDetails.name}" (ID: ${selectedElectionId})? This action is irreversible.`);
     if (!confirmEnd) return;
@@ -153,6 +154,39 @@ function AdminDashboard({
     } catch (error) {
       console.error("Error ending election:", error);
       showMessage(`Error ending election: ${error.data?.message || error.message || 'Transaction failed'}`, 'error');
+    }
+  };
+
+  // NEW FUNCTION: Handle Start Election
+  const handleStartElection = async () => {
+    if (!contract || isLoading || selectedElectionId === 0 || !currentElectionDetails) return;
+
+    // Check if the election is already active or completed
+    if (currentElectionDetails.isActive || currentElectionDetails.isCompleted) {
+      showMessage('This election is already active or has completed.', 'error');
+      return;
+    }
+
+    // Optional: Check if current time is past the scheduled start time
+    const currentTime = Math.floor(Date.now() / 1000);
+    if (currentTime < currentElectionDetails.startTime) {
+      showMessage('The election start time has not yet arrived. Please wait.', 'error');
+      return;
+    }
+
+    const confirmStart = window.confirm(`Are you sure you want to start election "${currentElectionDetails.name}" (ID: ${selectedElectionId})?`);
+    if (!confirmStart) return;
+
+    try {
+      showMessage(`Starting election ID ${selectedElectionId}...`, 'info');
+      const tx = await contract.startElection(selectedElectionId);
+      await tx.wait();
+      showMessage(`Election "${currentElectionDetails.name}" started successfully!`, 'success');
+      refreshAllElections(); // Refresh to update election status
+      refreshSelectedElection(selectedElectionId); // Refresh selected election details
+    } catch (error) {
+      console.error("Error starting election:", error);
+      showMessage(`Error starting election: ${error.data?.message || error.message || 'Transaction failed'}`, 'error');
     }
   };
 
@@ -296,17 +330,30 @@ function AdminDashboard({
                 <span className={`ml-2 px-2 py-1 rounded-full text-xs font-medium
                   ${currentElectionDetails.isActive ? 'bg-green-600 text-white' :
                     currentElectionDetails.isCompleted ? 'bg-red-600 text-white' :
-                    'bg-yellow-600 text-white'}`}>
+                      'bg-yellow-600 text-white'}`}>
                   {currentElectionDetails.isActive ? 'Active' : currentElectionDetails.isCompleted ? 'Completed' : 'Scheduled'}
                 </span>
               </p>
               <p><span className="font-medium">Candidates:</span> {currentElectionDetails.candidatesCount}</p>
               <p><span className="font-medium">Total Votes:</span> {currentElectionDetails.totalVotesCast}</p>
 
+              {/* NEW BUTTON: Start Election */}
+              {currentElectionDetails && !currentElectionDetails.isActive && !currentElectionDetails.isCompleted && (
+                <button
+                  onClick={handleStartElection}
+                  disabled={isLoading || new Date().getTime() / 1000 < currentElectionDetails.startTime}
+                  className="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg transition duration-150 ease-in-out disabled:opacity-50 mt-4"
+                >
+                  {new Date().getTime() / 1000 < currentElectionDetails.startTime
+                    ? `Start (Scheduled: ${formatTimestamp(currentElectionDetails.startTime)})`
+                    : 'Start Election'}
+                </button>
+              )}
+
               <button
                 onClick={handleEndElection}
                 disabled={isLoading || !currentElectionDetails.isActive}
-                className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded-lg transition duration-150 ease-in-out disabled:opacity-50 mt-4"
+                className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded-lg transition duration-150 ease-in-out disabled:opacity-50 mt-2"
               >
                 End Election
               </button>
@@ -340,7 +387,7 @@ function AdminDashboard({
                         <span className={`px-2 py-1 rounded-full text-xs font-medium
                           ${election.isActive ? 'bg-green-600 text-white' :
                             election.isCompleted ? 'bg-red-600 text-white' :
-                            'bg-yellow-600 text-white'}`}>
+                              'bg-yellow-600 text-white'}`}>
                           {election.isActive ? 'Active' : election.isCompleted ? 'Completed' : 'Scheduled'}
                         </span>
                       </td>
