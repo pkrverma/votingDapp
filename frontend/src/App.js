@@ -12,7 +12,7 @@ import ElectionSelector from './components/ElectionSelector';
 
 // --- Contract Configuration ---
 // !!! IMPORTANT: REPLACE THIS WITH YOUR DEPLOYED CONTRACT ADDRESS !!!
-const CONTRACT_ADDRESS = "0x22934CE4dBE8A06A3a2EF7005E1a417b8efD1777"; // Replace with your actual deployed address
+const CONTRACT_ADDRESS = "0x06e9Bf4bBf1b2f91dB893Ee3660B06183017d3fE"; // Replace with your actual deployed address
 const CONTRACT_ABI = ContractAbiJson.abi;
 // --- End Contract Configuration ---
 
@@ -33,6 +33,7 @@ function App() {
   const [candidates, setCandidates] = useState([]);
   const [totalVotes, setTotalVotes] = useState(0);
   const [voterInfo, setVoterInfo] = useState({ authorized: false, voted: false, vote: 0 }); // Voter info for selected election
+  const [authorizedVoters, setAuthorizedVoters] = useState([]); // NEW: List of authorized voters for the selected election
 
   // --- UI States ---
   const [isLoading, setIsLoading] = useState(false);
@@ -93,7 +94,7 @@ function App() {
     setIsLoading(true);
     try {
       // Check if current account is the contract deployer (super admin)
-      const deployerAddress = await contract.deployer();
+      const deployerAddress = await contract.getDeployer();
       setIsAdmin(deployerAddress.toLowerCase() === account.toLowerCase());
 
       const electionsCount = await contract.getElectionsCount();
@@ -125,13 +126,44 @@ function App() {
       console.error("Error fetching all elections:", error);
       showMessage(`Error fetching elections: ${error.message || 'Contract not found or network error.'}`, 'error');
       // Provide a specific warning if the default address is still in use
-      if (CONTRACT_ADDRESS === "0x22934CE4dBE8A06A3a2EF7005E1a417b8efD1777") {
+      if (CONTRACT_ADDRESS === "0x06e9Bf4bBf1b2f91dB893Ee3660B06183017d3fE") {
         showMessage("Please update the CONTRACT_ADDRESS in App.js with your deployed contract's address.", "error", 10000);
       }
     } finally {
       setIsLoading(false);
     }
   }, [contract, account, showMessage, selectedElectionId]);
+
+  // NEW: Fetch authorized voters for the selected election
+  const fetchAuthorizedVoters = useCallback(async (electionId) => {
+    if (!contract || electionId === 0) {
+      setAuthorizedVoters([]);
+      return;
+    }
+    try {
+      // Assuming you have a function in your contract like `getAuthorizedVoters(uint _electionId)`
+      // that returns an array of voter addresses or voter structs.
+      // If your contract returns an array of addresses:
+      const voterAddresses = await contract.getAuthorizedVoters(electionId);
+      const fetchedVoters = [];
+      for (const addr of voterAddresses) {
+        // You might need to fetch individual voter details if your contract stores them
+        // For simplicity, we'll assume getVoter gives enough details for the list.
+        const [authorized, voted, candidateIdVotedFor] = await contract.getVoter(electionId, addr);
+        fetchedVoters.push({
+          voterAddress: addr,
+          authorized: authorized,
+          voted: voted,
+          vote: Number(candidateIdVotedFor)
+        });
+      }
+      setAuthorizedVoters(fetchedVoters);
+    } catch (error) {
+      console.error(`Error fetching authorized voters for election ID ${electionId}:`, error);
+      showMessage(`Error fetching authorized voters: ${error.message || 'Unknown error.'}`, 'error');
+      setAuthorizedVoters([]); // Clear voters on error
+    }
+  }, [contract, showMessage]);
 
 
   // Fetch data specifically for the currently selected election ID
@@ -142,6 +174,7 @@ function App() {
       setCandidates([]);
       setVoterInfo({ authorized: false, voted: false, vote: 0 });
       setTotalVotes(0);
+      setAuthorizedVoters([]); // Clear authorized voters too
       return;
     }
 
@@ -190,6 +223,10 @@ function App() {
         voted: voted,
         vote: Number(candidateIdVotedFor),
       });
+
+      // NEW: Fetch authorized voters when election details are fetched
+      await fetchAuthorizedVoters(electionId);
+
       // Commented to reduce message spam
       // showMessage(`Data for election "${electionDetails[1]}" (ID: ${electionId}) fetched successfully!`, 'success');
 
@@ -199,7 +236,7 @@ function App() {
     } finally {
       setIsLoading(false);
     }
-  }, [contract, account, showMessage]);
+  }, [contract, account, showMessage, fetchAuthorizedVoters]);
 
   // --- Admin Function: Handle Remove Candidate ---
   const handleRemoveCandidate = useCallback(async (candidateIdToRemove) => {
@@ -229,6 +266,35 @@ function App() {
     }
   }, [contract, signer, selectedElectionId, isAdmin, showMessage, fetchDataForSelectedElection]);
 
+  // NEW: Admin Function: Handle Remove Authorized Voter
+  const handleRemoveAuthorizedVoter = useCallback(async (voterAddressToRemove) => {
+    if (!contract || !signer || selectedElectionId === 0 || !isAdmin) {
+      showMessage("Not authorized or election not selected.", "error");
+      return;
+    }
+
+    const confirmRemoval = window.confirm(`Are you sure you want to revoke authorization for voter ${voterAddressToRemove} from Election ID ${selectedElectionId}?`);
+    if (!confirmRemoval) {
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      // Assuming you have a function in your contract like `revokeVoterAuthorization(uint _electionId, address _voterAddress)`
+      const tx = await contract.revokeVoterAuthorization(selectedElectionId, voterAddressToRemove);
+      showMessage("Revoking voter authorization... please confirm in MetaMask and wait for transaction.", "info");
+      await tx.wait();
+      showMessage(`Voter ${voterAddressToRemove} authorization revoked for Election ID ${selectedElectionId}!`, "success");
+      // Refresh authorized voters and election details after removal
+      await fetchDataForSelectedElection(selectedElectionId); // This will also call fetchAuthorizedVoters
+    } catch (error) {
+      console.error("Error revoking voter authorization:", error);
+      showMessage(`Failed to revoke voter authorization: ${error.data?.message || error.reason || error.message}`, "error");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [contract, signer, selectedElectionId, isAdmin, showMessage, fetchDataForSelectedElection]);
+
 
   // Effect to fetch all elections when contract and account are established
   useEffect(() => {
@@ -250,6 +316,7 @@ function App() {
       setCurrentElectionDetails(null);
       setCandidates([]); // Clear candidates if no election is selected
       setTotalVotes(0);
+      setAuthorizedVoters([]); // Clear authorized voters if no election is selected
     }
   }, [selectedElectionId, contract, account, fetchDataForSelectedElection, allElections]);
 
@@ -287,6 +354,7 @@ function App() {
           setCurrentElectionDetails(null);
           setCandidates([]);
           setVoterInfo({ authorized: false, voted: false, vote: 0 });
+          setAuthorizedVoters([]); // Clear authorized voters on disconnect
           showMessage('Wallet disconnected or no account selected.', 'error');
         }
       };
@@ -405,6 +473,8 @@ function App() {
                 setSelectedElectionId={setSelectedElectionId}
                 handleRemoveCandidate={handleRemoveCandidate} // Pass down the removal function
                 candidates={candidates} // Pass candidates to AdminDashboard for removal interface
+                authorizedVoters={authorizedVoters} // NEW: Pass authorized voters to AdminDashboard
+                handleRemoveAuthorizedVoter={handleRemoveAuthorizedVoter} // NEW: Pass remove voter function
               />
             ) : (
               // Regular Voter/Candidate view - Use Grid for responsive two-column layout
@@ -454,7 +524,7 @@ function App() {
               <p className="text-lg sm:text-xl text-gray-400">Please connect your MetaMask wallet to use the DApp.</p>
             )}
             <p className="text-sm sm:text-base text-gray-500 mt-2">Ensure you are on the correct network (e.g., CoreDAO Mainnet or Testnet).</p>
-            {account && CONTRACT_ADDRESS === "0x22934CE4dBE8A06A3a2EF7005E1a417b8efD1777" && (
+            {account && CONTRACT_ADDRESS === "0x06e9Bf4bBf1b2f91dB893Ee3660B06183017d3fE" && (
               <div className="mt-6 p-3 sm:p-4 bg-yellow-700 rounded-lg">
                 <p className="text-lg sm:text-xl text-white font-semibold">Configuration Needed!</p>
                 <p className="text-sm sm:text-md text-yellow-200 mt-2">
@@ -470,7 +540,7 @@ function App() {
         <p>CoreDAO Voting DApp &copy; 2024</p>
         <p>Ensure your MetaMask is connected to the appropriate CoreDAO network.</p>
       </footer>
-    </div >
+    </div>
   );
 }
 

@@ -10,7 +10,9 @@ function AdminDashboard({
   refreshAllElections,
   refreshSelectedElection,
   candidates, // Added to display candidates for removal
-  handleRemoveCandidate // Added to pass down the remove function
+  handleRemoveCandidate, // Added to pass down the remove function
+  authorizedVoters, // NEW: Prop to receive the list of authorized voters
+  handleRemoveAuthorizedVoter // NEW: Prop to handle removing an authorized voter
 }) {
   // Election Management States
   const [newElectionName, setNewElectionName] = useState('');
@@ -156,6 +158,11 @@ function AdminDashboard({
       showMessage("Please enter a valid Ethereum address.", "error");
       return;
     }
+    // Check if voter is already authorized
+    if (authorizedVoters.some(voter => voter.voterAddress.toLowerCase() === voterAddressToAuth.toLowerCase())) {
+      showMessage("Voter is already authorized for this election.", "warning");
+      return;
+    }
     if (currentElectionDetails && currentElectionDetails.isActive) {
       showMessage("Cannot authorize voters for an active election. End it first.", "error");
       return;
@@ -240,7 +247,7 @@ function AdminDashboard({
               <p className="text-gray-300">Ends: <span className="font-semibold">{formatUnixTimestamp(currentElectionDetails.endTime)}</span></p>
               <button
                 onClick={handleStartElection}
-                disabled={isLoading || !contract || selectedElectionId === 0 || currentElectionDetails.isActive || currentElectionDetails.isCompleted || currentElectionDetails.startTime > Math.floor(Date.now() / 1000)}
+                disabled={isLoading || !contract || selectedElectionId === 0 || currentElectionDetails.isActive || currentElectionDetails.isCompleted} 
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition duration-150 ease-in-out disabled:opacity-50"
               >
                 Start Election
@@ -333,34 +340,76 @@ function AdminDashboard({
           )}
         </div>
 
-        {/* Authorize Voter */}
+        {/* Authorize Voter & Authorized Voter List (Combined) */}
         <div className="bg-gray-900 p-6 rounded-xl shadow-lg">
-          <h2 className="text-xl font-semibold mb-4 text-sky-400">Authorize Voter</h2>
+          <h2 className="text-xl font-semibold mb-4 text-sky-400">Authorize & Manage Voters</h2>
           {currentElectionDetails && currentElectionDetails.id !== 0 ? (
-            <form onSubmit={handleAuthorizeVoter} className="space-y-4">
-              <p className="text-gray-300">For: <span className="font-semibold">{currentElectionDetails.name} (ID: {currentElectionDetails.id})</span></p>
-              <div>
-                <label htmlFor="voterAddress" className="block text-gray-300 text-sm font-bold mb-2">Voter Address</label>
-                <input
-                  type="text"
-                  id="voterAddress"
-                  value={voterAddressToAuth}
-                  onChange={(e) => setVoterAddressToAuth(e.target.value)}
-                  className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline bg-gray-200"
-                  placeholder="0x..."
-                  required
-                />
+            <div className="flex flex-col space-y-6">
+              {/* Authorize Voter Form */}
+              <div className="flex-grow">
+                <form onSubmit={handleAuthorizeVoter} className="space-y-4 mb-6 pb-6 border-b border-gray-700">
+                  <p className="text-gray-300">For: <span className="font-semibold">{currentElectionDetails.name} (ID: {currentElectionDetails.id})</span></p>
+                  <div>
+                    <label htmlFor="voterAddress" className="block text-gray-300 text-sm font-bold mb-2">Voter Address</label>
+                    <input
+                      type="text"
+                      id="voterAddress"
+                      value={voterAddressToAuth}
+                      onChange={(e) => setVoterAddressToAuth(e.target.value)}
+                      className="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline bg-gray-200"
+                      placeholder="0x..."
+                      required
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={isLoading || !contract || selectedElectionId === 0 || (currentElectionDetails && currentElectionDetails.isActive)}
+                    className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition duration-150 ease-in-out disabled:opacity-50"
+                  >
+                    Authorize Voter
+                  </button>
+                </form>
               </div>
-              <button
-                type="submit"
-                disabled={isLoading || !contract || selectedElectionId === 0 || (currentElectionDetails && currentElectionDetails.isActive)}
-                className="w-full bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline transition duration-150 ease-in-out disabled:opacity-50"
-              >
-                Authorize Voter
-              </button>
-            </form>
+
+              {/* Authorized Voter List */}
+              <div className="flex-grow">
+                <h3 className="text-lg font-semibold mb-3 text-sky-300">Authorized Voters for {currentElectionDetails.name}</h3>
+                {authorizedVoters && authorizedVoters.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-700 table-fixed"> {/* Added table-fixed */}
+                      <thead className="bg-gray-700">
+                        <tr>
+                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider w-1/2">Address</th> {/* You might consider a width here if addresses are consistently long */}
+                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Voted</th>
+                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-gray-800 divide-y divide-gray-700">
+                        {authorizedVoters.map((voter, index) => (
+                          <tr key={index}>
+                            <td className="px-6 py-4 text-sm font-mono text-gray-100 break-words">{voter.voterAddress}</td> {/* Removed whitespace-nowrap and added break-words */}
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">{voter.voted ? 'Yes' : 'No'}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                              <button
+                                onClick={() => handleRemoveAuthorizedVoter(voter.voterAddress)}
+                                disabled={isLoading || !contract || (currentElectionDetails && currentElectionDetails.isActive)}
+                                className="bg-red-500 hover:bg-red-700 text-white font-bold py-1 px-3 rounded text-xs disabled:opacity-50"
+                              >
+                                Remove
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="text-gray-400">No voters authorized yet for this election.</p>
+                )}
+              </div>
+            </div>
           ) : (
-            <p className="text-gray-400">Select an election to authorize voters.</p>
+            <p className="text-gray-400">Select an election to authorize and manage voters.</p>
           )}
         </div>
       </div>

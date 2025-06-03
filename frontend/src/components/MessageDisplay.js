@@ -3,7 +3,7 @@ import React from 'react';
 function MessageDisplay({ message }) {
     if (!message || !message.text) return null;
 
-    const bgColor = message.type === 'success' ? 'bg-green-600' : 'bg-red-600';
+    const bgColor = message.type === 'success' ? 'bg-green-600' : (message.type === 'error' ? 'bg-red-600': 'bg-yellow-600');
 
     return (
         <div

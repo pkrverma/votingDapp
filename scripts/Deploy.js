@@ -3,20 +3,19 @@ const hre = require("hardhat");
 async function main() {
     await hre.run('compile'); // Ensure the contracts are compiled
 
-    // Get the ContractFactory for VotingContract
-    // As per previous error, use 'votingContract' (lowercase) here for artifact path
-    const VotingContractFactory = await hre.ethers.getContractFactory("votingContract");
+    // Get the ContractFactory for VotingContract (using exact contract name from .sol)
+    // For ethers.js v5, use the exact contract name as it appears in the Solidity file
+    const VotingContractFactory = await hre.ethers.getContractFactory("votingContract"); // <--- Ensure this matches your contract name case
 
     // Deploy the contract without any constructor arguments
     const votingContract = await VotingContractFactory.deploy();
 
-    // --- CHANGE THIS LINE FOR ethers.js v5 ---
-    await votingContract.deployed(); // Use .deployed() for ethers.js v5
-    // --- END CHANGE ---
+    // Await the deployment using .deployed() for ethers.js v5
+    await votingContract.deployed(); // <--- CHANGE for ethers.js v5
 
     // Log the address where the contract was deployed
     // For ethers.js v5, it's .address
-    console.log("Blockchain Voting contract deployed to address:", votingContract.address); // <--- Also .address for v5
+    console.log("Blockchain Voting contract deployed to address:", votingContract.address); // <--- CHANGE for ethers.js v5
 
     // --- OPTIONAL: Create an initial election immediately after deployment ---
     console.log("\nAttempting to create an initial election...");
@@ -27,6 +26,7 @@ async function main() {
     const endTime = startTime + (60 * 60 * 24 * 7); // Ends 7 days after start
 
     try {
+        // Interact with the contract (ethers.js v5)
         const createElectionTx = await votingContract.createElection(
             electionName,
             startTime,
@@ -43,6 +43,8 @@ async function main() {
     // --- END OPTIONAL SECTION ---
 }
 
+// We recommend this pattern to be able to use async/await everywhere
+// and properly handle errors.
 main().catch((error) => {
     console.error(error);
     process.exitCode = 1;
