@@ -112,35 +112,27 @@ The user interface is designed to be intuitive for both administrators and voter
 ### Demo Video
 
 https://github.com/user-attachments/assets/cded8bfa-7ae5-4511-9ed3-72574b0fe76e
-*Caption: A comprehensive video demonstration showcasing the end-to-end user flow for both admin and voter roles, including election creation, voting, and result viewing.*
 
 ### Admin's Dashboard
 ![Admin Dashboard](/frontend/src/media/Admin'sDashboard.png)
-*Caption: The central hub for administrators, providing access to all election management functions.*
 
 ### Create Election Panel
 ![Create Election](/frontend/src/media/CreateNewElection.png)
-*Caption: Admin interface for defining the name, start time, and end time for a new election.*
 
 ### Manage Election Status Panel
 ![Manage Election](/frontend/src/media/ManageElection.png)
-*Caption: Allows admins to view details of a selected election and manually trigger start/end if needed (though typically time-based).*
 
 ### Manage Candidates Panel
 ![Manage Candidate](/frontend/src/media/ManageCandidate.png)
-*Caption: Admin section for adding new candidates and viewing/removing existing candidates for a selected, non-active election.*
 
 ### Manage Voters Panel
 ![Manage Voters](/frontend/src/media/ManageVoters.png)
-*Caption: Admin interface to authorize specific Ethereum addresses, granting them the right to vote in a selected election.*
 
 ### Voter's Dashboard
 ![Voter Dashboard](/frontend/src/media/Voter'sDashboard.png)
-*Caption: The voter's main view, displaying available elections and their status. Voters can select an active election to participate in.*
 
 ### Voter Casting Vote
 ![Voter Election Vote](/frontend/src/media/VoterElectedVote.png)
-*Caption: The interface where an authorized voter can see the list of candidates for a selected election and cast their vote securely.*
 
 ---
 
@@ -150,10 +142,9 @@ The core logic of the voting application resides in a smart contract deployed on
 
 -   **Contract Address**: `0xB2281a6cb9c041c19791Ad2b356c7ED01cf2DF8d`
 
-You can view and interact with this contract directly on the CoreDAO Scan block explorer. This allows for independent verification of contract code (if source code is verified on the explorer), transactions, and stored data related to elections, candidates, and votes.
+You can view and interact with this contract directly on the CoreDAO Scan block explorer. This allows for independent verification of contract code, transactions, and stored data related to elections, candidates, and votes.
 
 ![CoreDao Explorer Transaction Example](/frontend/src/media/Transaction.png)
-*Caption: Example of a transaction related to the voting smart contract as viewed on the CoreDAO block explorer, showcasing transparency.*
 
 ---
 
@@ -179,7 +170,6 @@ We envision several enhancements to further improve the capabilities, security, 
 ---
 ## Contributing
 
-*(This is a placeholder - if your project is open source, add guidelines here)*
 We welcome contributions from the community! If you'd like to contribute, please fork the repository, make your changes, and submit a pull request. We recommend opening an issue first to discuss any major changes.
 
 ---
