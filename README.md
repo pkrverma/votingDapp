@@ -49,7 +49,7 @@ To provide a clear view of the user experience and interface, below are some scr
 
 ### Demo Video
 
-<video controls src="/frontend/src/media/CoreDao Demo.mp4" title="Demo Video"></video>
+https://github.com/user-attachments/assets/cded8bfa-7ae5-4511-9ed3-72574b0fe76e
 
 ### Admin's Dashboard
 ![Admin Dashboard](/frontend/src/media/Admin'sDashboard.png)
@@ -78,4 +78,4 @@ To provide a clear view of the user experience and interface, below are some scr
 
 > 0xB2281a6cb9c041c19791Ad2b356c7ED01cf2DF8d
 
-![CoreDao Explorer](/frontend/src/media/ContractTransaction.png)
+![CoreDao Explorer](/frontend/src/media/Transaction.png)

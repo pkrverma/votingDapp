@@ -407,34 +407,34 @@ function App() {
 
   // --- UI Rendering ---
   return (
-    <div className="min-h-screen bg-gray-900 text-white flex flex-col items-center p-4 font-sans">
+    <div className="min-h-screen bg-blue-950 text-gray-100 flex flex-col items-center p-4 font-sans">
       <MessageDisplay message={message} />
       <LoadingOverlay isLoading={isLoading} />
 
       {/* Outer container to control overall content width and centering */}
       <div className="w-full max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
-        <header className="mb-8 p-4 sm:p-6 bg-gray-800 rounded-xl shadow-2xl">
+        <header className="mb-8 p-4 sm:p-6 bg-blue-900 rounded-xl shadow-lg">
           <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
-            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-sky-400 text-center sm:text-left">CoreDAO Voting DApp</h1>
+            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-yellow-400 text-center sm:text-left">CoreDAO Voting DApp</h1>
             {!account ? (
               <button
                 onClick={connectWallet}
                 disabled={isLoading}
-                className="px-5 py-2 sm:px-6 sm:py-2 bg-sky-500 hover:bg-sky-600 rounded-lg text-white font-semibold transition duration-150 ease-in-out disabled:opacity-50 text-sm sm:text-base"
+                className="px-5 py-2 sm:px-6 sm:py-2 bg-yellow-500 hover:bg-yellow-600 rounded-lg text-blue-950 font-semibold transition duration-150 ease-in-out disabled:opacity-50 text-sm sm:text-base"
               >
                 Connect Wallet
               </button>
             ) : (
               <div className="text-center sm:text-right">
-                <p className="text-xs sm:text-sm text-gray-400">Connected Account:</p>
+                <p className="text-xs sm:text-sm text-gray-300">Connected Account:</p>
                 <p className="text-sm sm:text-base font-mono break-all">{account}</p>
               </div>
             )}
           </div>
           {/* Display current election details */}
           {currentElectionDetails && (
-            <p className="mt-3 text-base sm:text-lg text-gray-300 text-center sm:text-left">
+            <p className="mt-3 text-base sm:text-lg text-gray-200 text-center sm:text-left">
               Election: <span className="font-semibold">{currentElectionDetails.name} (ID: {currentElectionDetails.id})</span>
               <span className={`ml-2 px-2 py-1 rounded-full text-xs font-medium
                                 ${currentElectionDetails.isActive ? 'bg-green-600 text-white' :
@@ -449,6 +449,8 @@ function App() {
         {/* Election Selector (always visible once elections are loaded and wallet is connected) */}
         {account && allElections.length > 0 && (
           <ElectionSelector
+            // You will need to update the ElectionSelector component's internal styling
+            // to fully match the new blue/gold theme.
             elections={allElections}
             selectedElectionId={selectedElectionId}
             onSelectElection={setSelectedElectionId}
@@ -457,10 +459,12 @@ function App() {
 
         {/* Main Content - Conditional Rendering based on isAdmin */}
         {account && contract ? (
-          <main className="mt-8"> {/* Adjusted margin-top for spacing from header/selector */}
+          <main className="mt-8">
             {isAdmin ? (
               // Admin dashboard takes full width when active
               <AdminDashboard
+                // Remember to update the internal Tailwind classes within AdminDashboard,
+                // VoterPanel, CandidateList, and MessageDisplay components for a consistent theme.
                 contract={contract}
                 isLoading={isLoading}
                 showMessage={showMessage}
@@ -469,19 +473,19 @@ function App() {
                 selectedElectionId={selectedElectionId}
                 currentElectionDetails={currentElectionDetails}
                 refreshAllElections={fetchAllElections}
-                refreshSelectedElection={fetchDataForSelectedElection} // This is crucial for refreshing specific election data
+                refreshSelectedElection={fetchDataForSelectedElection}
                 setSelectedElectionId={setSelectedElectionId}
-                handleRemoveCandidate={handleRemoveCandidate} // Pass down the removal function
-                candidates={candidates} // Pass candidates to AdminDashboard for removal interface
-                authorizedVoters={authorizedVoters} // NEW: Pass authorized voters to AdminDashboard
-                handleRemoveAuthorizedVoter={handleRemoveAuthorizedVoter} // NEW: Pass remove voter function
+                handleRemoveCandidate={handleRemoveCandidate}
+                candidates={candidates}
+                authorizedVoters={authorizedVoters}
+                handleRemoveAuthorizedVoter={handleRemoveAuthorizedVoter}
               />
             ) : (
               // Regular Voter/Candidate view - Use Grid for responsive two-column layout
               <div className="grid grid-cols-1 md:grid-cols-1 gap-8">
                 {/* Voter Panel takes one column */}
-                <div className="admin-dashboard bg-gray-800 p-6 rounded-xl shadow-2xl space-y-8">
-                  <h2 className="text-3xl font-bold text-sky-400 mb-6 text-center">Voters Dashboard</h2>
+                <div className="admin-dashboard bg-blue-900 p-6 rounded-xl shadow-lg space-y-8">
+                  <h2 className="text-3xl font-bold text-yellow-400 mb-6 text-center">Voters Dashboard</h2>
                   <div className='grid grid-cols-2'>
 
                     <VoterPanel
@@ -508,8 +512,8 @@ function App() {
                         isLoading={isLoading}
                         handleVote={handleVote}
                         electionActive={currentElectionDetails ? currentElectionDetails.isActive : false}
-                        isAdmin={isAdmin} // Pass isAdmin to show/hide remove buttons
-                        handleRemoveCandidate={handleRemoveCandidate} // Pass down the removal function
+                        isAdmin={isAdmin}
+                        handleRemoveCandidate={handleRemoveCandidate}
                       />
                     </div>
                   </div>
@@ -519,15 +523,15 @@ function App() {
           </main>
         ) : (
           // Display for unconnected or unconfigured state
-          <div className="mt-10 text-center p-4 sm:p-6 bg-gray-800 rounded-xl shadow-2xl">
+          <div className="mt-10 text-center p-4 sm:p-6 bg-blue-900 rounded-xl shadow-lg">
             {!account && (
-              <p className="text-lg sm:text-xl text-gray-400">Please connect your MetaMask wallet to use the DApp.</p>
+              <p className="text-lg sm:text-xl text-gray-300">Please connect your MetaMask wallet to use the DApp.</p>
             )}
-            <p className="text-sm sm:text-base text-gray-500 mt-2">Ensure you are on the correct network (e.g., CoreDAO Mainnet or Testnet).</p>
+            <p className="text-sm sm:text-base text-gray-400 mt-2">Ensure you are on the correct network (e.g., CoreDAO Mainnet or Testnet).</p>
             {account && CONTRACT_ADDRESS === "0xB2281a6cb9c041c19791Ad2b356c7ED01cf2DF8d" && (
-              <div className="mt-6 p-3 sm:p-4 bg-yellow-700 rounded-lg">
+              <div className="mt-6 p-3 sm:p-4 bg-orange-700 rounded-lg">
                 <p className="text-lg sm:text-xl text-white font-semibold">Configuration Needed!</p>
-                <p className="text-sm sm:text-md text-yellow-200 mt-2">
+                <p className="text-sm sm:text-md text-orange-200 mt-2">
                   Please update the `CONTRACT_ADDRESS` in `App.js` with your deployed smart contract's address.
                 </p>
               </div>
@@ -536,7 +540,7 @@ function App() {
         )}
       </div> {/* End of main content wrapper */}
 
-      <footer className="w-full max-w-screen-xl mx-auto mt-12 mb-6 text-center text-gray-500 text-xs sm:text-sm">
+      <footer className="w-full max-w-screen-xl mx-auto mt-12 mb-6 text-center text-gray-400 text-xs sm:text-sm">
         <p>CoreDAO Voting DApp &copy; 2024</p>
         <p>Ensure your MetaMask is connected to the appropriate CoreDAO network.</p>
       </footer>
