@@ -12,7 +12,7 @@ import ElectionSelector from './components/ElectionSelector';
 
 // --- Contract Configuration ---
 // !!! IMPORTANT: REPLACE THIS WITH YOUR DEPLOYED CONTRACT ADDRESS !!!
-const CONTRACT_ADDRESS = "0x06e9Bf4bBf1b2f91dB893Ee3660B06183017d3fE"; // Replace with your actual deployed address
+const CONTRACT_ADDRESS = "0xB2281a6cb9c041c19791Ad2b356c7ED01cf2DF8d"; // Replace with your actual deployed address
 const CONTRACT_ABI = ContractAbiJson.abi;
 // --- End Contract Configuration ---
 
@@ -126,7 +126,7 @@ function App() {
       console.error("Error fetching all elections:", error);
       showMessage(`Error fetching elections: ${error.message || 'Contract not found or network error.'}`, 'error');
       // Provide a specific warning if the default address is still in use
-      if (CONTRACT_ADDRESS === "0x06e9Bf4bBf1b2f91dB893Ee3660B06183017d3fE") {
+      if (CONTRACT_ADDRESS === "0xB2281a6cb9c041c19791Ad2b356c7ED01cf2DF8d") {
         showMessage("Please update the CONTRACT_ADDRESS in App.js with your deployed contract's address.", "error", 10000);
       }
     } finally {
@@ -524,7 +524,7 @@ function App() {
               <p className="text-lg sm:text-xl text-gray-400">Please connect your MetaMask wallet to use the DApp.</p>
             )}
             <p className="text-sm sm:text-base text-gray-500 mt-2">Ensure you are on the correct network (e.g., CoreDAO Mainnet or Testnet).</p>
-            {account && CONTRACT_ADDRESS === "0x06e9Bf4bBf1b2f91dB893Ee3660B06183017d3fE" && (
+            {account && CONTRACT_ADDRESS === "0xB2281a6cb9c041c19791Ad2b356c7ED01cf2DF8d" && (
               <div className="mt-6 p-3 sm:p-4 bg-yellow-700 rounded-lg">
                 <p className="text-lg sm:text-xl text-white font-semibold">Configuration Needed!</p>
                 <p className="text-sm sm:text-md text-yellow-200 mt-2">

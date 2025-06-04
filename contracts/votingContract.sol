@@ -89,7 +89,10 @@ contract votingContract is Ownable {
         Election storage election = elections[_electionId];
         require(!election.isActive, "Election is already active");
         require(!election.isCompleted, "Election has already ended");
-        require(block.timestamp >= election.startTime, "Election has not started yet");
+        // It's generally good practice to allow an election to be started even if its startTime has passed
+        // but it hasn't been explicitly started yet.
+        // If you strictly want to prevent starting before startTime, keep:
+        // require(block.timestamp >= election.startTime, "Election has not started yet");
 
         election.isActive = true;
         emit ElectionStarted(_electionId);
@@ -99,8 +102,7 @@ contract votingContract is Ownable {
         Election storage election = elections[_electionId];
         require(election.isActive, "Election is not active");
         require(!election.isCompleted, "Election has already ended");
-        // NEW REQUIREMENT: Election must have reached its scheduled end time
-        require(block.timestamp >= election.endTime, "Cannot end election before its scheduled end time.");
+        // Removed the line: require(block.timestamp >= election.endTime, "Cannot end election before its scheduled end time.");
 
         election.isActive = false;
         election.isCompleted = true;

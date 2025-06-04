@@ -49,8 +49,10 @@ To provide a clear view of the user experience and interface, below are some scr
 
 ### Demo Video
 
-### Admin Dashboard
-![Admin Dashboard](/frontend/src/media/AdminDashboard.png)
+<video controls src="/frontend/src/media/CoreDao Demo.mp4" title="Demo Video"></video>
+
+### Admin's Dashboard
+![Admin Dashboard](/frontend/src/media/Admin'sDashboard.png)
 
 ### Create Election
 ![Create Election](/frontend/src/media/CreateNewElection.png)
@@ -64,8 +66,8 @@ To provide a clear view of the user experience and interface, below are some scr
 ### Manage Voters
 ![Manage Voters](/frontend/src/media/ManageVoters.png)
 
-### Voter Dashboard
-![Voter Dashboard](/frontend/src/media/VoterDashboard.png)
+### Voter's Dashboard
+![Voter Dashboard](/frontend/src/media/Voter'sDashboard.png)
 
 ### Voted Dashboard (Voter)
 ![Voter Election Vote](/frontend/src/media/VoterElectedVote.png)
@@ -74,6 +76,6 @@ To provide a clear view of the user experience and interface, below are some scr
 
 ## Contract Address
 
-> 0x06e9Bf4bBf1b2f91dB893Ee3660B06183017d3fE
+> 0xB2281a6cb9c041c19791Ad2b356c7ED01cf2DF8d
 
 ![CoreDao Explorer](/frontend/src/media/ContractTransaction.png)
