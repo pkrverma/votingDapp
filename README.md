@@ -166,13 +166,3 @@ We envision several enhancements to further improve the capabilities, security, 
 -   **Governance & Analytics**:
     * **DAO-based Administration**: Transitioning parts of the administrative control to a Decentralized Autonomous Organization (DAO) for more community-driven governance of the platform itself.
     * **Privacy-Preserving Analytics**: Providing aggregated, anonymized statistics and insights about election participation and trends without compromising individual voter privacy.
-
----
-## Contributing
-
-We welcome contributions from the community! If you'd like to contribute, please fork the repository, make your changes, and submit a pull request. We recommend opening an issue first to discuss any major changes.
-
----
-## License
-
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
